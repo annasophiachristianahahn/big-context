@@ -52,10 +52,10 @@ export async function GET(
             completedChunks: job.completedChunks,
             chunks: chunkList,
             stitchedOutput:
-              job.status === "completed" ? job.stitchedOutput : undefined,
+              (job.status === "completed" || job.status === "cancelled") ? job.stitchedOutput : undefined,
           });
 
-          if (job.status === "completed" || job.status === "failed") {
+          if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
             isComplete = true;
             sendEvent({ done: true });
             controller.close();

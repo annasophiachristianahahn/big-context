@@ -8,11 +8,13 @@ import type { ChunkJobStatus } from "@/types";
 interface ChunkProgressProps {
   jobId: string;
   onComplete: (output: string) => void;
+  onCancel: () => void;
 }
 
-export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
+export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProps) {
   const [status, setStatus] = useState<ChunkJobStatus | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const connect = useCallback(() => {
     const eventSource = new EventSource(
@@ -36,6 +38,10 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
       ) {
         onComplete(data.stitchedOutput);
       }
+      if (data.status === "cancelled") {
+        eventSource.close();
+        onCancel();
+      }
     };
 
     eventSource.onerror = () => {
@@ -43,12 +49,25 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
     };
 
     return eventSource;
-  }, [jobId, onComplete]);
+  }, [jobId, onComplete, onCancel]);
 
   useEffect(() => {
     const es = connect();
     return () => es.close();
   }, [connect]);
+
+  async function handleCancel() {
+    setCancelling(true);
+    try {
+      await fetch(`/api/chunk-process/${jobId}/cancel`, {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Cancel failed:", error);
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function handleRetry() {
     setRetrying(true);
@@ -57,7 +76,6 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
         method: "POST",
       });
       if (res.ok) {
-        // Reconnect SSE
         connect();
       }
     } finally {
@@ -80,8 +98,25 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
 
   if (!status) {
     return (
-      <div className="mx-4 mb-4 p-4 rounded-xl bg-muted animate-pulse">
-        <p className="text-sm">Starting processing...</p>
+      <div className="mx-4 mb-4 p-4 rounded-xl bg-muted shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <p className="text-sm">Starting processing...</p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="h-7 text-xs"
+          >
+            {cancelling ? "Cancelling..." : "Stop"}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -92,14 +127,31 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
       : 0;
 
   const failedChunks = status.chunks.filter((c) => c.status === "failed");
+  const isActive = status.status === "processing";
+  const isCancelled = status.status === "cancelled";
 
   return (
-    <div className="mx-4 mb-4 p-4 rounded-xl border bg-muted/50 space-y-3">
+    <div className="mx-4 mb-4 p-4 rounded-xl border bg-muted/50 space-y-3 shrink-0">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">Processing Chunks</h3>
-        <span className="text-xs text-muted-foreground">
-          {status.completedChunks}/{status.totalChunks} ({percentage}%)
-        </span>
+        <h3 className="font-semibold text-sm">
+          {isCancelled ? "Processing Cancelled" : "Processing Chunks"}
+        </h3>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {status.completedChunks}/{status.totalChunks} ({percentage}%)
+          </span>
+          {isActive && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="h-7 text-xs"
+            >
+              {cancelling ? "Cancelling..." : "Stop"}
+            </Button>
+          )}
+        </div>
       </div>
 
       <Progress value={percentage} className="h-2" />
@@ -116,6 +168,8 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
                 ? "bg-blue-500 animate-pulse"
                 : chunk.status === "failed"
                 ? "bg-red-500"
+                : chunk.status === "cancelled"
+                ? "bg-yellow-500"
                 : "bg-muted-foreground/30"
             }`}
             title={`Chunk ${chunk.index + 1}: ${chunk.status}${
@@ -125,8 +179,15 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
         ))}
       </div>
 
+      {/* Cancelled notice */}
+      {isCancelled && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          Processing was stopped. {status.completedChunks} of {status.totalChunks} chunks completed.
+        </p>
+      )}
+
       {/* Failed chunks + retry */}
-      {failedChunks.length > 0 && status.status !== "processing" && (
+      {failedChunks.length > 0 && !isActive && !isCancelled && (
         <div className="flex items-center gap-2">
           <p className="text-xs text-destructive">
             {failedChunks.length} chunk(s) failed
@@ -144,7 +205,7 @@ export function ChunkProgress({ jobId, onComplete }: ChunkProgressProps) {
       )}
 
       {/* Export buttons */}
-      {status.status === "completed" && status.stitchedOutput && (
+      {(status.status === "completed" || isCancelled) && status.stitchedOutput && (
         <div className="flex gap-2">
           <Button
             variant="outline"

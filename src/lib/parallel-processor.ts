@@ -12,6 +12,18 @@ const BASE_DELAY_MS = 1000;
  * Process chunks in parallel with controlled concurrency.
  * Updates database as each chunk completes.
  */
+/**
+ * Check if a job has been cancelled by the user.
+ */
+async function isJobCancelled(chunkJobId: string): Promise<boolean> {
+  const [job] = await db
+    .select({ status: chunkJobs.status })
+    .from(chunkJobs)
+    .where(eq(chunkJobs.id, chunkJobId))
+    .limit(1);
+  return job?.status === "cancelled";
+}
+
 export async function processChunksInParallel(
   chunkJobId: string,
   chunkInputs: ChunkInput[],
@@ -22,10 +34,33 @@ export async function processChunksInParallel(
   const results: (ChunkResult | undefined)[] = new Array(chunkInputs.length);
   let activeCount = 0;
   let nextIndex = 0;
+  let cancelled = false;
 
   return new Promise((resolve) => {
-    function startNext() {
-      while (activeCount < MAX_CONCURRENCY && nextIndex < chunkInputs.length) {
+    async function startNext() {
+      // Check for cancellation before launching new chunks
+      if (!cancelled && nextIndex < chunkInputs.length) {
+        cancelled = await isJobCancelled(chunkJobId);
+        if (cancelled) {
+          // Mark remaining chunks as cancelled results
+          for (let i = nextIndex; i < chunkInputs.length; i++) {
+            if (!results[i]) {
+              results[i] = {
+                index: chunkInputs[i].index,
+                output: "",
+                tokens: 0,
+                cost: 0,
+                status: "failed",
+                error: "Cancelled by user",
+              };
+            }
+          }
+          checkDone();
+          return;
+        }
+      }
+
+      while (activeCount < MAX_CONCURRENCY && nextIndex < chunkInputs.length && !cancelled) {
         const chunk = chunkInputs[nextIndex];
         const currentIdx = nextIndex;
         nextIndex++;

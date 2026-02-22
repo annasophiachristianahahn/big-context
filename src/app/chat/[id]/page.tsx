@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, use } from "react";
+import { useState, useEffect, useCallback, useRef, use } from "react";
 import { useChatDetail, useRefreshChat } from "@/hooks/use-chat-messages";
 import { useUpdateChat } from "@/hooks/use-chats";
 import { ChatMessages } from "@/components/ChatMessages";
@@ -10,6 +10,7 @@ import { SystemPromptEditor } from "@/components/SystemPromptEditor";
 import { TokenStats } from "@/components/TokenStats";
 import { ChunkProgress } from "@/components/ChunkProgress";
 import { CostEstimator } from "@/components/CostEstimator";
+import { Button } from "@/components/ui/button";
 import type { CostEstimate } from "@/types";
 
 export default function ChatPage({
@@ -34,6 +35,9 @@ export default function ChatPage({
     text: string;
     instruction: string;
   } | null>(null);
+
+  // AbortController for streaming cancellation
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Sync DB messages to local state
   useEffect(() => {
@@ -73,11 +77,15 @@ export default function ChatPage({
     setStreamingContent("");
     setIsStreaming(true);
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chatId: id, message: content }),
+        signal: abortController.signal,
       });
 
       const reader = res.body?.getReader();
@@ -115,11 +123,22 @@ export default function ChatPage({
         }
       }
     } catch (error) {
-      setStreamingContent(`Error: ${(error as Error).message}`);
+      if ((error as Error).name === "AbortError") {
+        // User cancelled — that's fine
+      } else {
+        setStreamingContent(`Error: ${(error as Error).message}`);
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
       setStreamingContent("");
       refreshChat();
+    }
+  }
+
+  function handleStopStreaming() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   }
 
@@ -176,6 +195,11 @@ export default function ChatPage({
     [refreshChat]
   );
 
+  const handleChunkCancel = useCallback(() => {
+    setActiveChunkJob(null);
+    refreshChat();
+  }, [refreshChat]);
+
   function handleModelChange(modelId: string) {
     updateChat.mutate({ id, model: modelId });
   }
@@ -230,11 +254,29 @@ export default function ChatPage({
         isStreaming={isStreaming}
       />
 
+      {/* Stop button for streaming */}
+      {isStreaming && (
+        <div className="flex justify-center py-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleStopStreaming}
+            className="h-8 gap-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="1" strokeWidth={2} />
+            </svg>
+            Stop generating
+          </Button>
+        </div>
+      )}
+
       {/* Chunk progress */}
       {activeChunkJob && (
         <ChunkProgress
           jobId={activeChunkJob}
           onComplete={handleChunkComplete}
+          onCancel={handleChunkCancel}
         />
       )}
 
