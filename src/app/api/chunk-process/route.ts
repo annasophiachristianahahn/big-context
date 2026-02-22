@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     await db.insert(messages).values({
       chatId,
       role: "user",
-      content: `[Big Context Processing]\nInstruction: ${instruction}\nText length: ${text.length.toLocaleString()} characters\nChunks: ${chunkInputs.length}\nModel: ${model.name}`,
+      content: `[Big Context Processing]\nInstruction: ${instruction}\nText length: ${text.length.toLocaleString()} characters (~${estimateTokens(text).toLocaleString()} tokens)\nChunks: ${chunkInputs.length} (${maxChunkTokens.toLocaleString()} tokens/chunk)\nModel: ${model.name} (context: ${model.contextLength.toLocaleString()}, max output: ${model.maxOutput.toLocaleString()})`,
     });
 
     // Process asynchronously (don't await)
