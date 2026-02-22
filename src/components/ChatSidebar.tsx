@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useChats, useDeleteChat, useRenameChat } from "@/hooks/use-chats";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,11 @@ export function ChatSidebar({ isOpen, onToggle, collapsed, onToggleCollapse }: C
   const [editTitle, setEditTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Prefetch the new chat page for instant navigation
+  useEffect(() => {
+    router.prefetch("/chat");
+  }, [router]);
+
   const filteredChats = chats?.filter(
     (c) =>
       !searchQuery ||
@@ -40,12 +45,13 @@ export function ChatSidebar({ isOpen, onToggle, collapsed, onToggleCollapse }: C
 
   function handleNewChat() {
     router.push("/chat");
-    onToggle();
+    // Only close mobile sheet — don't toggle on desktop (would open sheet on top of sidebar)
+    if (isOpen) onToggle();
   }
 
   function handleSelectChat(id: string) {
     router.push(`/chat/${id}`);
-    onToggle();
+    if (isOpen) onToggle();
   }
 
   function handleStartRename(id: string, currentTitle: string) {
