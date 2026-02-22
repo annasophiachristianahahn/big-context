@@ -100,6 +100,8 @@ export interface CostEstimate {
   model: string;
   modelName: string;
   maxOutputPerCall?: number;
+  tokensPerChunk?: number;
+  totalTextTokens?: number;
 }
 
 // === Chat types ===

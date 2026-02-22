@@ -40,6 +40,11 @@ export function CostEstimator({
           <div className="text-muted-foreground">Model</div>
           <div className="font-medium">{estimate.modelName}</div>
 
+          <div className="text-muted-foreground">Document Size</div>
+          <div className="font-mono">
+            {(estimate.totalTextTokens ?? 0).toLocaleString()} tokens
+          </div>
+
           <div className="text-muted-foreground">Max Output/Call</div>
           <div className="font-mono">
             {estimate.maxOutputPerCall
@@ -47,27 +52,22 @@ export function CostEstimator({
               : "Unknown"}
           </div>
 
-          <div className="text-muted-foreground">Chunks</div>
+          <div className="text-muted-foreground">Tokens/Chunk</div>
           <div className="font-mono">
+            {(estimate.tokensPerChunk ?? 0).toLocaleString()}
+          </div>
+
+          <div className="text-muted-foreground">Chunks</div>
+          <div className="font-mono font-semibold">
             {estimate.totalChunks}
             {estimate.totalChunks > 1 && (
-              <span className="text-muted-foreground font-sans text-xs ml-1">
+              <span className="text-muted-foreground font-sans text-xs font-normal ml-1">
                 ({estimate.totalChunks} API calls)
               </span>
             )}
           </div>
 
-          <div className="text-muted-foreground">Est. Input Tokens</div>
-          <div className="font-mono">
-            {estimate.estimatedInputTokens.toLocaleString()}
-          </div>
-
-          <div className="text-muted-foreground">Est. Output Tokens</div>
-          <div className="font-mono">
-            {estimate.estimatedOutputTokens.toLocaleString()}
-          </div>
-
-          <div className="text-muted-foreground font-medium">Est. Cost</div>
+          <div className="text-muted-foreground">Est. Cost</div>
           <div className="font-mono font-semibold">
             ${estimate.estimatedCost.toFixed(4)}
           </div>

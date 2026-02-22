@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Model not found" }, { status: 400 });
     }
 
+    // Diagnostic logging for chunk calculation debugging
+    console.log(`[BigContext] Model: ${modelId}, name: ${model.name}`);
+    console.log(`[BigContext] contextLength: ${model.contextLength}, maxOutput: ${model.maxOutput}`);
+    console.log(`[BigContext] Text length: ${text.length} chars, est tokens: ${estimateTokens(text)}`);
+
     // Cost estimate mode
     const url = new URL(request.url);
     if (url.searchParams.get("estimate") === "true") {
@@ -55,6 +60,7 @@ export async function POST(request: NextRequest) {
         model,
         enableStitchPass ?? false
       );
+      console.log(`[BigContext] Cost estimate: ${estimate.totalChunks} chunks, maxOutput used: ${model.maxOutput}`);
       return NextResponse.json(estimate);
     }
 
@@ -66,6 +72,7 @@ export async function POST(request: NextRequest) {
       model.maxOutput
     );
     const chunkInputs = splitTextIntoChunks(text, maxChunkTokens);
+    console.log(`[BigContext] instructionTokens: ${instructionTokens}, maxChunkTokens: ${maxChunkTokens}, chunks: ${chunkInputs.length}`);
 
     // Create ChunkJob and Chunk records
     const [chunkJob] = await db
@@ -206,6 +213,16 @@ export async function POST(request: NextRequest) {
         jobId: chunkJob.id,
         totalChunks: chunkInputs.length,
         status: "processing",
+        debug: {
+          modelId,
+          modelName: model.name,
+          contextLength: model.contextLength,
+          maxOutput: model.maxOutput,
+          instructionTokens,
+          maxChunkTokens,
+          textLength: text.length,
+          estimatedTextTokens: estimateTokens(text),
+        },
       },
       { status: 202 }
     );

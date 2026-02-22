@@ -181,8 +181,9 @@ export default function ChatPage({
         }),
       });
       if (res.ok) {
-        const { jobId } = await res.json();
-        setActiveChunkJob(jobId);
+        const data = await res.json();
+        console.log("[BigContext] Processing started:", data.debug);
+        setActiveChunkJob(data.jobId);
         setPendingBigContext(null);
         refreshChat();
       }

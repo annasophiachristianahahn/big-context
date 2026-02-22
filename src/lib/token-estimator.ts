@@ -85,5 +85,7 @@ export function estimateCost(
     model: model.id,
     modelName: model.name,
     maxOutputPerCall: model.maxOutput,
+    tokensPerChunk: safeChunkSize,
+    totalTextTokens,
   };
 }
