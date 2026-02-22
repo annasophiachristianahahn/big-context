@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -26,10 +26,24 @@ export function ChatMessages({
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
+  // Auto-scroll to bottom on new messages/streaming
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
+
+  // Detect if user has scrolled up
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJumpToBottom(distanceFromBottom > 200);
+  }, []);
+
+  function scrollToBottom() {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }
 
   if (messages.length === 0 && !isStreaming) {
     return (
@@ -46,7 +60,11 @@ export function ChatMessages({
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0">
+    <div
+      ref={scrollRef}
+      onScroll={handleScroll}
+      className="flex-1 overflow-y-auto min-h-0 relative"
+    >
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
@@ -75,11 +93,25 @@ export function ChatMessages({
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Jump to bottom button */}
+      {showJumpToBottom && (
+        <button
+          onClick={scrollToBottom}
+          className="sticky bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground shadow-lg text-xs font-medium hover:bg-primary/90 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+          Jump to bottom
+        </button>
+      )}
     </div>
   );
 }
 
-const TRUNCATE_THRESHOLD = 1500; // characters before truncating user messages
+const USER_TRUNCATE_LINES = 20; // Show first 20 lines collapsed
+const USER_TRUNCATE_CHARS = 2000;
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
@@ -88,11 +120,22 @@ function MessageBubble({ message }: { message: Message }) {
     message.content.startsWith("[Big Context Processing Failed]");
 
   const [expanded, setExpanded] = useState(false);
-  const shouldTruncate = isUser && message.content.length > TRUNCATE_THRESHOLD;
-  const displayContent =
-    shouldTruncate && !expanded
-      ? message.content.slice(0, TRUNCATE_THRESHOLD)
-      : message.content;
+
+  // Truncate by lines or characters, whichever is shorter
+  const lines = message.content.split("\n");
+  const shouldTruncate =
+    isUser &&
+    (message.content.length > USER_TRUNCATE_CHARS || lines.length > USER_TRUNCATE_LINES);
+
+  let displayContent = message.content;
+  if (shouldTruncate && !expanded) {
+    const byLines = lines.slice(0, USER_TRUNCATE_LINES).join("\n");
+    const byChars = message.content.slice(0, USER_TRUNCATE_CHARS);
+    displayContent = byLines.length < byChars.length ? byLines : byChars;
+  }
+
+  const charCount = message.content.length;
+  const lineCount = lines.length;
 
   return (
     <div
@@ -116,16 +159,26 @@ function MessageBubble({ message }: { message: Message }) {
           <div>
             <p className="whitespace-pre-wrap text-sm break-words">{displayContent}</p>
             {shouldTruncate && (
-              <Button
-                variant="link"
-                size="sm"
+              <button
                 onClick={() => setExpanded(!expanded)}
-                className="h-auto p-0 mt-1 text-xs text-primary-foreground/70 hover:text-primary-foreground"
+                className="mt-2 flex items-center gap-1 text-xs font-medium rounded-md px-2 py-1 bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors"
               >
-                {expanded
-                  ? "Show less"
-                  : `... Show all (${(message.content.length / 1000).toFixed(0)}K chars)`}
-              </Button>
+                {expanded ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Show full message ({lineCount} lines · {(charCount / 1000).toFixed(0)}K chars)
+                  </>
+                )}
+              </button>
             )}
           </div>
         ) : (
