@@ -9,6 +9,8 @@ export async function GET(
 ) {
   const { id } = await params;
   const encoder = new TextEncoder();
+  console.log(`[BigContext:SSE] Stream opened for job ${id}`);
+  let pollCount = 0;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -63,6 +65,17 @@ export async function GET(
             if (c.status === "failed") failedCount++;
           }
 
+          pollCount++;
+          const chunkStatuses = chunkList.map(c => c.status).reduce((acc, s) => {
+            acc[s] = (acc[s] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+
+          // Log every 5th poll to avoid excessive logging
+          if (pollCount % 5 === 1 || job.status !== "processing") {
+            console.log(`[BigContext:SSE] Poll #${pollCount} job=${id}: status=${job.status}, completed=${job.completedChunks}/${job.totalChunks}, chunks=${JSON.stringify(chunkStatuses)}, tokens=${totalTokens}`);
+          }
+
           sendEvent({
             id: job.id,
             status: job.status,
@@ -91,6 +104,7 @@ export async function GET(
             job.status === "failed" ||
             job.status === "cancelled"
           ) {
+            console.log(`[BigContext:SSE] Job ${id} terminal: status=${job.status}, hasOutput=${!!job.stitchedOutput}, outputLen=${job.stitchedOutput?.length ?? 0}`);
             isComplete = true;
             sendEvent({ done: true });
             controller.close();

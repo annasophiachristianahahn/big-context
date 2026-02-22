@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Model not found" }, { status: 400 });
     }
 
+    console.log(`[BigContext:Route] model=${modelId}, context=${model.contextLength}, maxOutput=${model.maxOutput}, textLen=${text.length}, enableStitch=${enableStitchPass}`);
+
     // Cost estimate mode
     const url = new URL(request.url);
     if (url.searchParams.get("estimate") === "true") {
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest) {
         model,
         enableStitchPass ?? false
       );
+      console.log(`[BigContext:Route] Cost estimate: ${estimate.totalChunks} chunks, $${estimate.estimatedCost}`);
       return NextResponse.json(estimate);
     }
 
@@ -66,6 +69,8 @@ export async function POST(request: NextRequest) {
       model.maxOutput
     );
     const chunkInputs = splitTextIntoChunks(text, maxChunkTokens);
+    console.log(`[BigContext:Route] Chunking: instructionTokens=${instructionTokens}, maxChunkTokens=${maxChunkTokens}, chunks=${chunkInputs.length}`);
+
     // Create ChunkJob and Chunk records
     const [chunkJob] = await db
       .insert(chunkJobs)
@@ -107,10 +112,14 @@ export async function POST(request: NextRequest) {
       model.maxOutput
     )
       .then(async (results) => {
+        console.log(`[BigContext:Route] Processing complete for job ${chunkJob.id}: ${results.filter(r => r.status === "completed").length} ok, ${results.filter(r => r.status === "failed").length} failed`);
+
         const orderedOutputs = results
           .filter((r) => r.status === "completed")
           .sort((a, b) => a.index - b.index)
           .map((r) => r.output);
+
+        console.log(`[BigContext:Route] orderedOutputs: ${orderedOutputs.length} outputs, totalChars=${orderedOutputs.reduce((s, o) => s + o.length, 0)}`);
 
         let finalOutput = orderedOutputs.join("\n\n");
         let stitchTokens = 0;
@@ -143,12 +152,15 @@ export async function POST(request: NextRequest) {
           (r) => r.status === "failed"
         ).length;
 
+        const finalStatus = failedCount === results.length ? "failed" : "completed";
+        console.log(`[BigContext:Route] Job ${chunkJob.id} finalizing: status=${finalStatus}, outputLen=${finalOutput.length}, tokens=${totalTokens}, cost=$${totalCost.toFixed(4)}`);
+        console.log(`[BigContext:Route] Final output preview: ${finalOutput.slice(0, 300)}`);
+
         // IMPORTANT: Write stitchedOutput and status atomically in one update
-        // to prevent race condition where status is "completed" but output is null
         await db
           .update(chunkJobs)
           .set({
-            status: failedCount === results.length ? "failed" : "completed",
+            status: finalStatus,
             stitchedOutput: finalOutput,
             updatedAt: new Date(),
           })
@@ -197,6 +209,9 @@ export async function POST(request: NextRequest) {
         }
       })
       .catch(async (error) => {
+        console.error(`[BigContext:Route] Job ${chunkJob.id} CRASHED:`, (error as Error).message);
+        console.error(`[BigContext:Route] Stack:`, (error as Error).stack);
+
         await db
           .update(chunkJobs)
           .set({ status: "failed", updatedAt: new Date() })

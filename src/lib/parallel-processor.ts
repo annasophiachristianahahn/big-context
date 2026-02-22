@@ -9,6 +9,9 @@ const MAX_CONCURRENCY = 5;
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
+// Structured logging prefix for easy filtering in Railway logs
+const LOG = "[BigContext:Processor]";
+
 /**
  * Process chunks in parallel with controlled concurrency.
  * Updates database as each chunk completes.
@@ -33,6 +36,10 @@ export async function processChunksInParallel(
   totalChunks: number,
   maxOutputTokens?: number
 ): Promise<ChunkResult[]> {
+  console.log(`${LOG} === STARTING JOB ${chunkJobId} ===`);
+  console.log(`${LOG} chunks=${chunkInputs.length}, model=${model}, maxOutput=${maxOutputTokens}`);
+  console.log(`${LOG} instruction (first 200): ${instruction.slice(0, 200)}`);
+
   const results: (ChunkResult | undefined)[] = new Array(chunkInputs.length);
   let activeCount = 0;
   let nextIndex = 0;
@@ -72,10 +79,12 @@ export async function processChunksInParallel(
           .then((result) => {
             results[currentIdx] = result;
             activeCount--;
+            console.log(`${LOG} Chunk ${chunk.index} done: status=${result.status}, output=${result.output.length}chars, tokens=${result.tokens}, active=${activeCount}`);
             checkDone();
             startNext();
           })
           .catch((error) => {
+            console.error(`${LOG} Chunk ${chunk.index} UNHANDLED ERROR:`, error.message);
             results[currentIdx] = {
               index: chunk.index,
               output: "",
@@ -92,7 +101,11 @@ export async function processChunksInParallel(
     }
 
     function checkDone() {
-      if (results.every((r) => r !== undefined)) {
+      const done = results.filter(r => r !== undefined).length;
+      if (done === chunkInputs.length) {
+        const succeeded = results.filter(r => r?.status === "completed").length;
+        const failed = results.filter(r => r?.status === "failed").length;
+        console.log(`${LOG} === ALL CHUNKS DONE: ${succeeded} succeeded, ${failed} failed ===`);
         resolve(results as ChunkResult[]);
       }
     }
@@ -109,6 +122,9 @@ async function processOneChunk(
   totalChunks: number,
   maxOutputTokens?: number
 ): Promise<ChunkResult> {
+  const chunkTag = `[Chunk ${chunk.index}/${totalChunks}]`;
+  console.log(`${LOG} ${chunkTag} START: input=${chunk.text.length} chars (~${estimateTokens(chunk.text)} tokens)`);
+
   // Find the DB chunk record
   const dbChunks = await db
     .select()
@@ -117,7 +133,10 @@ async function processOneChunk(
     .limit(1);
 
   const dbChunk = dbChunks[0];
-  if (!dbChunk) throw new Error(`Chunk record not found: ${chunk.index}`);
+  if (!dbChunk) {
+    console.error(`${LOG} ${chunkTag} DB record NOT FOUND!`);
+    throw new Error(`Chunk record not found: ${chunk.index}`);
+  }
 
   // Mark as processing
   await db
@@ -157,16 +176,32 @@ async function processOneChunk(
     },
   ];
 
+  console.log(`${LOG} ${chunkTag} System msg: ${messages[0].content.slice(0, 150)}...`);
+  console.log(`${LOG} ${chunkTag} User msg (first 300): ${messages[1].content.slice(0, 300)}...`);
+  console.log(`${LOG} ${chunkTag} User msg total: ${messages[1].content.length} chars`);
+
   // Retry with exponential backoff
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
+      console.log(`${LOG} ${chunkTag} API attempt ${attempt + 1}/${MAX_RETRIES}, model=${model}, maxTokens=${maxOutputTokens}`);
+      const apiStart = Date.now();
+
       const response = await chatCompletion(model, messages, maxOutputTokens);
 
+      const apiMs = Date.now() - apiStart;
       const output = response.choices[0]?.message?.content ?? "";
+      const finishReason = response.choices[0]?.finish_reason ?? "unknown";
       const usage = response.usage;
       const tokens = usage?.total_tokens ?? 0;
       const cost = usage?.cost ?? 0;
+
+      console.log(`${LOG} ${chunkTag} API response: ${apiMs}ms, output=${output.length}chars, tokens=${tokens}, cost=$${cost.toFixed(4)}, finish=${finishReason}`);
+      console.log(`${LOG} ${chunkTag} Output preview: ${output.slice(0, 300)}`);
+
+      if (output.length === 0) {
+        console.warn(`${LOG} ${chunkTag} WARNING: Empty output from model!`);
+      }
 
       // Update chunk record
       await db
@@ -188,6 +223,8 @@ async function processOneChunk(
         })
         .where(eq(chunkJobs.id, chunkJobId));
 
+      console.log(`${LOG} ${chunkTag} DB updated: completed, counter incremented`);
+
       return {
         index: chunk.index,
         output,
@@ -197,11 +234,14 @@ async function processOneChunk(
       };
     } catch (error) {
       lastError = error as Error;
+      console.error(`${LOG} ${chunkTag} API error (attempt ${attempt + 1}): ${lastError.message.slice(0, 500)}`);
+
       const isRateLimit =
         lastError.message.includes("429") ||
         lastError.message.includes("rate");
       if (isRateLimit && attempt < MAX_RETRIES - 1) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        console.log(`${LOG} ${chunkTag} Rate limited, retry in ${delay}ms`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -210,6 +250,8 @@ async function processOneChunk(
   }
 
   // Mark as failed
+  console.error(`${LOG} ${chunkTag} FAILED after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+
   await db
     .update(chunks)
     .set({
@@ -251,24 +293,23 @@ export async function stitchResults(
   contextLength: number,
   maxOutputTokens?: number
 ): Promise<{ output: string; tokens: number; cost: number }> {
+  console.log(`${LOG} Stitch: ${chunkOutputs.length} outputs, totalChars=${chunkOutputs.reduce((s, o) => s + o.length, 0)}`);
+
   if (chunkOutputs.length <= 1) {
+    console.log(`${LOG} Stitch: single output, skipping`);
     return { output: chunkOutputs[0] ?? "", tokens: 0, cost: 0 };
   }
 
-  // Check if total output exceeds what the model can produce in one call.
-  // If so, skip stitching entirely to avoid truncating the content.
-  // Use script-aware token estimation (critical for non-Latin scripts like Devanagari)
   const totalOutputTokens = chunkOutputs.reduce(
     (sum, o) => sum + estimateTokens(o),
     0
   );
   const effectiveMaxOutput = maxOutputTokens ?? Math.floor(contextLength * 0.5);
 
+  console.log(`${LOG} Stitch: totalOutputTokens=${totalOutputTokens}, effectiveMaxOutput=${effectiveMaxOutput}`);
+
   if (totalOutputTokens > effectiveMaxOutput * 0.9) {
-    // Content too large to stitch without losing data — just concatenate
-    console.log(
-      `Skipping stitch: total output ~${totalOutputTokens} tokens exceeds max output ~${effectiveMaxOutput}. Concatenating instead.`
-    );
+    console.log(`${LOG} Stitch: SKIPPING — output too large. Concatenating instead.`);
     return {
       output: chunkOutputs.join("\n\n"),
       tokens: 0,

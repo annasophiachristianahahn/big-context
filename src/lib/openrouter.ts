@@ -124,18 +124,25 @@ export async function chatCompletion(
   };
   if (maxTokens) body.max_tokens = maxTokens;
 
+  const bodyStr = JSON.stringify(body);
+  console.log(`[BigContext:API] POST /chat/completions model=${model} maxTokens=${maxTokens} bodySize=${bodyStr.length}`);
+
   const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify(body),
+    body: bodyStr,
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
+    console.error(`[BigContext:API] ERROR ${response.status}: ${errorBody.slice(0, 500)}`);
     throw new Error(`OpenRouter API error ${response.status}: ${errorBody}`);
   }
 
-  return response.json();
+  const result: OpenRouterResponse = await response.json();
+  console.log(`[BigContext:API] OK: id=${result.id}, tokens=${result.usage?.total_tokens ?? '?'}, finish=${result.choices?.[0]?.finish_reason ?? '?'}`);
+
+  return result;
 }
 
 export async function chatCompletionStream(
