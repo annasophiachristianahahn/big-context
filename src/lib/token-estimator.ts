@@ -84,5 +84,6 @@ export function estimateCost(
     estimatedCost: Math.round(estimatedCostTotal * 10000) / 10000,
     model: model.id,
     modelName: model.name,
+    maxOutputPerCall: model.maxOutput,
   };
 }

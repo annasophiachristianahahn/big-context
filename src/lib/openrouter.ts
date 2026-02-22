@@ -25,6 +25,18 @@ function getHeaders(): Record<string, string> {
 
 // === Model Catalog ===
 
+/**
+ * When OpenRouter doesn't report max_completion_tokens (returns null),
+ * infer a reasonable default based on the model's context window.
+ * Models with larger context windows generally support larger outputs.
+ */
+function inferMaxOutput(contextLength: number): number {
+  if (contextLength >= 500_000) return 16_384;  // Large context models (Gemini, Claude 4.x)
+  if (contextLength >= 100_000) return 16_384;  // Medium-large (most modern models)
+  if (contextLength >= 32_000) return 8_192;    // Medium context
+  return 4_096;                                  // Small context / older models
+}
+
 let cachedModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
@@ -59,7 +71,7 @@ export async function fetchModels(): Promise<ModelInfo[]> {
       id: m.id,
       name: m.name,
       contextLength: m.context_length,
-      maxOutput: m.top_provider?.max_completion_tokens ?? 4096,
+      maxOutput: m.top_provider?.max_completion_tokens ?? inferMaxOutput(m.context_length),
       inputPricePerMillion: parseFloat(m.pricing.prompt) * 1_000_000,
       outputPricePerMillion: parseFloat(m.pricing.completion) * 1_000_000,
       isFree:

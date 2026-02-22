@@ -40,6 +40,13 @@ export function CostEstimator({
           <div className="text-muted-foreground">Model</div>
           <div className="font-medium">{estimate.modelName}</div>
 
+          <div className="text-muted-foreground">Max Output/Call</div>
+          <div className="font-mono">
+            {estimate.maxOutputPerCall
+              ? estimate.maxOutputPerCall.toLocaleString() + " tokens"
+              : "Unknown"}
+          </div>
+
           <div className="text-muted-foreground">Chunks</div>
           <div className="font-mono">
             {estimate.totalChunks}
@@ -73,10 +80,17 @@ export function CostEstimator({
               High chunk count ({estimate.totalChunks} chunks)
             </p>
             <p>
-              This model has a limited max output per call, requiring many small chunks.
-              Consider using a model with a larger output limit (e.g., Gemini Flash, Claude Sonnet)
-              to reduce the number of API calls and improve quality.
+              This model&apos;s max output is{" "}
+              {estimate.maxOutputPerCall
+                ? estimate.maxOutputPerCall.toLocaleString() + " tokens/call"
+                : "limited"}
+              , requiring many small chunks. Models with larger output limits need fewer chunks:
             </p>
+            <ul className="list-disc list-inside mt-1 space-y-0.5">
+              <li><strong>Claude Sonnet 4.6</strong> — 128K output</li>
+              <li><strong>Gemini 2.5 Flash</strong> — 65K output</li>
+              <li><strong>Claude Opus 4.5</strong> — 64K output</li>
+            </ul>
           </div>
         )}
 

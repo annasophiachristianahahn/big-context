@@ -99,6 +99,7 @@ export interface CostEstimate {
   estimatedCost: number;
   model: string;
   modelName: string;
+  maxOutputPerCall?: number;
 }
 
 // === Chat types ===
