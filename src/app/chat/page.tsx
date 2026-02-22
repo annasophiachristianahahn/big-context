@@ -7,42 +7,42 @@ import { ModelSelector } from "@/components/ModelSelector";
 import { SystemPromptEditor } from "@/components/SystemPromptEditor";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { FileUpload } from "@/components/FileUpload";
+import { FileUpload, type UploadedFile } from "@/components/FileUpload";
 
 export default function NewChatPage() {
   const [model, setModel] = useState("anthropic/claude-sonnet-4.6");
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const [uploadedFile, setUploadedFile] = useState<{
-    content: string;
-    name: string;
-  } | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const router = useRouter();
   const createChat = useCreateChat();
 
   async function handleStart() {
-    if (!message.trim() && !uploadedFile) return;
+    if (!message.trim() && uploadedFiles.length === 0) return;
 
     const chat = await createChat.mutateAsync({
       model,
       systemPrompt: systemPrompt ?? undefined,
     });
 
-    // Send the first message via the chat page
-    const fullMessage = uploadedFile
-      ? `[File: ${uploadedFile.name}]\n${uploadedFile.content}\n\n${message}`
-      : message;
+    // Build the first message
+    const fileParts = uploadedFiles.map((f) => `[File: ${f.name}]\n${f.content}`);
+    const fullMessage = [...fileParts, message].filter(Boolean).join("\n\n");
 
     // Store the first message in sessionStorage so the chat page can pick it up
     sessionStorage.setItem(
       `pending-message-${chat.id}`,
       JSON.stringify({
         message: fullMessage,
-        file: uploadedFile,
+        files: uploadedFiles,
       })
     );
 
     router.push(`/chat/${chat.id}`);
+  }
+
+  function removeFile(index: number) {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -87,39 +87,50 @@ export default function NewChatPage() {
           </div>
 
           {/* File upload */}
-          <div className="flex items-center gap-2">
-            <FileUpload
-              onFileContent={(content, name) =>
-                setUploadedFile({ content, name })
-              }
-            />
-            {uploadedFile && (
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <span className="truncate max-w-[200px]">
-                  {uploadedFile.name}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <FileUpload
+                onFilesContent={(files) =>
+                  setUploadedFiles((prev) => [...prev, ...files])
+                }
+              />
+              {uploadedFiles.length === 0 && (
+                <span className="text-xs text-muted-foreground">
+                  Attach files (.txt, .md, .csv, .json, .pdf)
                 </span>
-                <span>
-                  ({(uploadedFile.content.length / 1000).toFixed(0)}K chars)
+              )}
+            </div>
+            {uploadedFiles.map((file, idx) => (
+              <div
+                key={`${file.name}-${idx}`}
+                className="flex items-center gap-1 text-sm text-muted-foreground bg-muted rounded-md px-2 py-1"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="truncate max-w-[200px]">{file.name}</span>
+                <span className="text-xs">
+                  ({(file.content.length / 1000).toFixed(0)}K chars)
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-5 w-5 p-0"
-                  onClick={() => setUploadedFile(null)}
+                  className="h-5 w-5 p-0 ml-auto shrink-0"
+                  onClick={() => removeFile(idx)}
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </Button>
               </div>
-            )}
+            ))}
           </div>
         </div>
 
         <Button
           onClick={handleStart}
           disabled={
-            createChat.isPending || (!message.trim() && !uploadedFile)
+            createChat.isPending || (!message.trim() && uploadedFiles.length === 0)
           }
           className="w-full"
           size="lg"

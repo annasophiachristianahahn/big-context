@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { FileUpload } from "./FileUpload";
+import { FileUpload, type UploadedFile } from "./FileUpload";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -15,12 +15,11 @@ const BIG_CONTEXT_THRESHOLD = 10000; // chars
 
 export function ChatInput({ onSend, onBigContext, disabled }: ChatInputProps) {
   const [message, setMessage] = useState("");
-  const [uploadedFile, setUploadedFile] = useState<{
-    content: string;
-    name: string;
-  } | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [bigContextMode, setBigContextMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const totalChars = uploadedFiles.reduce((sum, f) => sum + f.content.length, 0);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -30,28 +29,41 @@ export function ChatInput({ onSend, onBigContext, disabled }: ChatInputProps) {
     }
   }, [message]);
 
-  function handleFileContent(content: string, filename: string) {
-    setUploadedFile({ content, name: filename });
-    if (content.length > BIG_CONTEXT_THRESHOLD) {
+  function handleFilesContent(files: UploadedFile[]) {
+    setUploadedFiles((prev) => [...prev, ...files]);
+    const newTotal = [...uploadedFiles, ...files].reduce((sum, f) => sum + f.content.length, 0);
+    if (newTotal > BIG_CONTEXT_THRESHOLD) {
       setBigContextMode(true);
     }
   }
 
-  function handleSend() {
-    if (!message.trim() && !uploadedFile) return;
+  function removeFile(index: number) {
+    setUploadedFiles((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.reduce((sum, f) => sum + f.content.length, 0) <= BIG_CONTEXT_THRESHOLD) {
+        setBigContextMode(false);
+      }
+      return next;
+    });
+  }
 
-    if (bigContextMode && uploadedFile) {
-      onBigContext(uploadedFile.content, message.trim() || "Process this text");
+  function handleSend() {
+    if (!message.trim() && uploadedFiles.length === 0) return;
+
+    // Combine all file contents
+    const combinedContent = uploadedFiles.map((f) => f.content).join("\n\n---\n\n");
+
+    if (bigContextMode && uploadedFiles.length > 0) {
+      onBigContext(combinedContent, message.trim() || "Process this text");
       setMessage("");
-      setUploadedFile(null);
+      setUploadedFiles([]);
       setBigContextMode(false);
     } else {
-      const fullMessage = uploadedFile
-        ? `[File: ${uploadedFile.name}]\n${uploadedFile.content}\n\n${message}`
-        : message;
+      const fileParts = uploadedFiles.map((f) => `[File: ${f.name}]\n${f.content}`);
+      const fullMessage = [...fileParts, message].filter(Boolean).join("\n\n");
       onSend(fullMessage);
       setMessage("");
-      setUploadedFile(null);
+      setUploadedFiles([]);
       setBigContextMode(false);
     }
   }
@@ -66,52 +78,62 @@ export function ChatInput({ onSend, onBigContext, disabled }: ChatInputProps) {
   return (
     <div className="border-t bg-background p-4">
       <div className="max-w-3xl mx-auto">
-        {/* Uploaded file indicator */}
-        {uploadedFile && (
-          <div className="mb-2 flex items-center gap-2 text-sm bg-muted rounded-lg px-3 py-2">
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="truncate">{uploadedFile.name}</span>
-            <span className="text-muted-foreground shrink-0">
-              ({(uploadedFile.content.length / 1000).toFixed(0)}K chars)
-            </span>
-            {uploadedFile.content.length > BIG_CONTEXT_THRESHOLD && (
-              <Button
-                variant={bigContextMode ? "default" : "outline"}
-                size="sm"
-                className="h-6 text-xs ml-auto"
-                onClick={() => setBigContextMode(!bigContextMode)}
+        {/* Uploaded files indicator */}
+        {uploadedFiles.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {uploadedFiles.map((file, idx) => (
+              <div
+                key={`${file.name}-${idx}`}
+                className="flex items-center gap-2 text-sm bg-muted rounded-lg px-3 py-1.5"
               >
-                {bigContextMode ? "Big Context ON" : "Enable Big Context"}
-              </Button>
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="truncate">{file.name}</span>
+                <span className="text-muted-foreground shrink-0 text-xs">
+                  ({(file.content.length / 1000).toFixed(0)}K chars)
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 shrink-0 ml-auto"
+                  onClick={() => removeFile(idx)}
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </Button>
+              </div>
+            ))}
+            {/* Summary row with Big Context toggle when multiple files or large content */}
+            {totalChars > BIG_CONTEXT_THRESHOLD && (
+              <div className="flex items-center gap-2 px-3 py-1">
+                <span className="text-xs text-muted-foreground">
+                  {uploadedFiles.length} file{uploadedFiles.length > 1 ? "s" : ""} · {(totalChars / 1000).toFixed(0)}K chars total
+                </span>
+                <Button
+                  variant={bigContextMode ? "default" : "outline"}
+                  size="sm"
+                  className="h-6 text-xs ml-auto"
+                  onClick={() => setBigContextMode(!bigContextMode)}
+                >
+                  {bigContextMode ? "Big Context ON" : "Enable Big Context"}
+                </Button>
+              </div>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 shrink-0"
-              onClick={() => {
-                setUploadedFile(null);
-                setBigContextMode(false);
-              }}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </Button>
           </div>
         )}
 
         {bigContextMode && (
           <div className="mb-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2">
-            Big Context mode: Your file will be split into chunks and processed in parallel.
+            Big Context mode: Your {uploadedFiles.length > 1 ? "files" : "file"} will be split into chunks and processed in parallel.
             Type your instruction below (e.g., &quot;Translate to English&quot; or &quot;Summarize each section&quot;).
           </div>
         )}
 
         {/* Input area */}
         <div className="flex items-end gap-2">
-          <FileUpload onFileContent={handleFileContent} disabled={disabled} />
+          <FileUpload onFilesContent={handleFilesContent} disabled={disabled} />
           <Textarea
             ref={textareaRef}
             value={message}
@@ -128,7 +150,7 @@ export function ChatInput({ onSend, onBigContext, disabled }: ChatInputProps) {
           />
           <Button
             onClick={handleSend}
-            disabled={disabled || (!message.trim() && !uploadedFile)}
+            disabled={disabled || (!message.trim() && uploadedFiles.length === 0)}
             size="sm"
             className="h-10 w-10 p-0 shrink-0"
           >

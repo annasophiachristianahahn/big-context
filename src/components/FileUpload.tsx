@@ -3,8 +3,13 @@
 import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 
+export interface UploadedFile {
+  content: string;
+  name: string;
+}
+
 interface FileUploadProps {
-  onFileContent: (content: string, filename: string) => void;
+  onFilesContent: (files: UploadedFile[]) => void;
   disabled?: boolean;
 }
 
@@ -21,53 +26,59 @@ const ACCEPTED_TYPES = [
   "application/pdf",
 ];
 
-export function FileUpload({ onFileContent, disabled }: FileUploadProps) {
+export function FileUpload({ onFilesContent, disabled }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [processing, setProcessing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(
-    async (file: File) => {
+  const readSingleFile = useCallback(async (file: File): Promise<UploadedFile> => {
+    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+      const pdfjsLib = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pages: string[] = [];
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((item: any) => (item.str as string) ?? "")
+          .join(" ");
+        pages.push(pageText);
+      }
+
+      return { content: pages.join("\n\n"), name: file.name };
+    } else {
+      const text = await file.text();
+      return { content: text, name: file.name };
+    }
+  }, []);
+
+  const handleFiles = useCallback(
+    async (fileList: FileList) => {
       setProcessing(true);
       try {
-        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-          // Dynamic import of PDF.js
-          const pdfjsLib = await import("pdfjs-dist");
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-
-          const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-          const pages: string[] = [];
-
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .map((item: any) => (item.str as string) ?? "")
-              .join(" ");
-            pages.push(pageText);
-          }
-
-          onFileContent(pages.join("\n\n"), file.name);
-        } else {
-          const text = await file.text();
-          onFileContent(text, file.name);
-        }
+        const files = Array.from(fileList);
+        const results = await Promise.all(files.map(readSingleFile));
+        onFilesContent(results);
       } catch (error) {
-        console.error("Error reading file:", error);
+        console.error("Error reading files:", error);
       } finally {
         setProcessing(false);
       }
     },
-    [onFileContent]
+    [onFilesContent, readSingleFile]
   );
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
+    }
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -81,10 +92,12 @@ export function FileUpload({ onFileContent, disabled }: FileUploadProps) {
         ref={inputRef}
         type="file"
         accept={ACCEPTED_TYPES.join(",")}
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFile(file);
+          if (e.target.files && e.target.files.length > 0) {
+            handleFiles(e.target.files);
+          }
           e.target.value = "";
         }}
       />
@@ -94,7 +107,7 @@ export function FileUpload({ onFileContent, disabled }: FileUploadProps) {
         disabled={disabled || processing}
         onClick={() => inputRef.current?.click()}
         className="h-8 px-2"
-        title="Upload file (.txt, .md, .csv, .json, .pdf)"
+        title="Upload files (.txt, .md, .csv, .json, .pdf)"
       >
         {processing ? (
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -117,9 +130,9 @@ export function FileUpload({ onFileContent, disabled }: FileUploadProps) {
           onDragLeave={() => setIsDragOver(false)}
         >
           <div className="bg-background border-2 border-dashed border-primary rounded-xl p-8 text-center">
-            <p className="text-lg font-medium">Drop file here</p>
+            <p className="text-lg font-medium">Drop files here</p>
             <p className="text-sm text-muted-foreground">
-              .txt, .md, .csv, .json, .pdf
+              .txt, .md, .csv, .json, .pdf — multiple files supported
             </p>
           </div>
         </div>

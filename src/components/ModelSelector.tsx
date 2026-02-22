@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useModels } from "@/hooks/use-models";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,9 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
+import type { ModelInfo } from "@/types";
+
+type SortOption = "default" | "name" | "price-low" | "price-high" | "newest";
 
 interface ModelSelectorProps {
   value: string;
@@ -24,23 +27,67 @@ interface ModelSelectorProps {
   disabled?: boolean;
 }
 
+const FEATURED_IDS = [
+  "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-opus-4.6",
+];
+
 export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [sort, setSort] = useState<SortOption>("default");
   const { data: models, isLoading } = useModels();
 
   const selectedModel = models?.find((m) => m.id === value);
 
-  const featured = models?.filter(
-    (m) =>
-      m.id === "anthropic/claude-sonnet-4.6" ||
-      m.id === "anthropic/claude-opus-4.6"
-  );
-  const freeModels = models?.filter(
-    (m) => m.isFree && !featured?.find((f) => f.id === m.id)
-  );
-  const paidModels = models?.filter(
-    (m) => !m.isFree && !featured?.find((f) => f.id === m.id)
-  );
+  const { featured, sortedModels } = useMemo(() => {
+    if (!models) return { featured: [], sortedModels: [] };
+
+    const feat = models.filter((m) => FEATURED_IDS.includes(m.id));
+    const rest = models.filter((m) => !FEATURED_IDS.includes(m.id));
+
+    let sorted: ModelInfo[];
+    switch (sort) {
+      case "name":
+        sorted = [...rest].sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "price-low":
+        sorted = [...rest].sort((a, b) => {
+          // Free first, then by input price ascending
+          if (a.isFree && !b.isFree) return -1;
+          if (!a.isFree && b.isFree) return 1;
+          return a.inputPricePerMillion - b.inputPricePerMillion;
+        });
+        break;
+      case "price-high":
+        sorted = [...rest].sort((a, b) => {
+          // Paid first (most expensive), then free
+          if (a.isFree && !b.isFree) return 1;
+          if (!a.isFree && b.isFree) return -1;
+          return b.inputPricePerMillion - a.inputPricePerMillion;
+        });
+        break;
+      case "newest":
+        sorted = [...rest].sort((a, b) => b.createdAt - a.createdAt);
+        break;
+      default:
+        sorted = rest; // original order from API (free first, then alphabetical)
+        break;
+    }
+
+    return { featured: feat, sortedModels: sorted };
+  }, [models, sort]);
+
+  // In default mode, split into free/paid groups
+  const freeModels = sort === "default" ? sortedModels.filter((m) => m.isFree) : [];
+  const paidModels = sort === "default" ? sortedModels.filter((m) => !m.isFree) : [];
+
+  const sortButtons: { key: SortOption; label: string }[] = [
+    { key: "default", label: "Default" },
+    { key: "name", label: "A-Z" },
+    { key: "price-low", label: "$ Low" },
+    { key: "price-high", label: "$ High" },
+    { key: "newest", label: "Newest" },
+  ];
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -76,11 +123,28 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           </svg>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[520px] p-0" align="start">
+      <PopoverContent className="w-[540px] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search models..." />
+          {/* Sort controls */}
+          <div className="flex items-center gap-1 px-3 py-1.5 border-b">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1">Sort</span>
+            {sortButtons.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setSort(s.key)}
+                className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${
+                  sort === s.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
           {/* Column headers */}
-          <div className="grid grid-cols-[1fr_72px_72px_52px] gap-1 px-3 py-1.5 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="grid grid-cols-[1fr_72px_72px_56px] gap-1 px-3 py-1.5 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
             <span>Model</span>
             <span className="text-right">In/1M</span>
             <span className="text-right">Out/1M</span>
@@ -88,7 +152,8 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           </div>
           <CommandList>
             <CommandEmpty>No models found.</CommandEmpty>
-            {featured && featured.length > 0 && (
+            {/* Featured always on top */}
+            {featured.length > 0 && (
               <CommandGroup heading="Featured">
                 {featured.map((model) => (
                   <ModelItem
@@ -103,7 +168,8 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
                 ))}
               </CommandGroup>
             )}
-            {freeModels && freeModels.length > 0 && (
+            {/* Default mode: show grouped Free / Paid */}
+            {sort === "default" && freeModels.length > 0 && (
               <CommandGroup heading="Free Models">
                 {freeModels.slice(0, 20).map((model) => (
                   <ModelItem
@@ -118,9 +184,25 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
                 ))}
               </CommandGroup>
             )}
-            {paidModels && paidModels.length > 0 && (
+            {sort === "default" && paidModels.length > 0 && (
               <CommandGroup heading="Paid Models">
                 {paidModels.map((model) => (
+                  <ModelItem
+                    key={model.id}
+                    model={model}
+                    selected={value === model.id}
+                    onSelect={() => {
+                      onChange(model.id);
+                      setOpen(false);
+                    }}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {/* Sorted mode: flat list */}
+            {sort !== "default" && sortedModels.length > 0 && (
+              <CommandGroup heading={`All Models · ${sortedModels.length}`}>
+                {sortedModels.map((model) => (
                   <ModelItem
                     key={model.id}
                     model={model}
@@ -159,12 +241,12 @@ function ModelItem({
   selected,
   onSelect,
 }: {
-  model: { id: string; name: string; contextLength: number; inputPricePerMillion: number; outputPricePerMillion: number; isFree: boolean };
+  model: ModelInfo;
   selected: boolean;
   onSelect: () => void;
 }) {
   return (
-    <CommandItem value={model.id + " " + model.name} onSelect={onSelect} className="grid grid-cols-[1fr_72px_72px_52px] gap-1 items-center">
+    <CommandItem value={model.id + " " + model.name} onSelect={onSelect} className="grid grid-cols-[1fr_72px_72px_56px] gap-1 items-center">
       <div className="flex items-center gap-2 min-w-0">
         {selected && (
           <svg className="w-4 h-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">

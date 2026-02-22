@@ -64,6 +64,7 @@ export async function fetchModels(): Promise<ModelInfo[]> {
       isFree:
         parseFloat(m.pricing.prompt) === 0 &&
         parseFloat(m.pricing.completion) === 0,
+      createdAt: m.created ?? 0,
     }))
     .sort((a, b) => {
       // Featured models first

@@ -3,6 +3,7 @@ export interface OpenRouterModel {
   id: string;
   name: string;
   context_length: number;
+  created?: number; // unix timestamp
   pricing: {
     prompt: string; // price per token as string
     completion: string;
@@ -24,6 +25,7 @@ export interface ModelInfo {
   inputPricePerMillion: number;
   outputPricePerMillion: number;
   isFree: boolean;
+  createdAt: number; // unix timestamp
 }
 
 // === OpenRouter API types ===
