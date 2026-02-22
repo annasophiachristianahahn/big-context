@@ -145,7 +145,8 @@ export function ChatInput({ onSend, onBigContext, disabled }: ChatInputProps) {
                 : "Type a message... (Shift+Enter for new line)"
             }
             disabled={disabled}
-            className="flex-1 min-h-[40px] max-h-[200px] resize-none text-sm"
+            className="flex-1 min-h-[40px] max-h-[200px] overflow-y-auto resize-none text-sm"
+            style={{ fieldSizing: "normal" } as unknown as React.CSSProperties}
             rows={1}
           />
           <Button

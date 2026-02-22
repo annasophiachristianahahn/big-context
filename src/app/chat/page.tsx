@@ -72,9 +72,9 @@ export default function NewChatPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-lg space-y-6">
-        <div className="text-center space-y-2">
+    <div className="flex-1 flex flex-col items-center overflow-y-auto p-4">
+      <div className="w-full max-w-lg space-y-6 my-auto">
+        <div className="text-center space-y-2 shrink-0">
           <h1 className="text-3xl font-bold">Big Context</h1>
           <p className="text-muted-foreground">
             Chat with any LLM, or process massive documents in parallel.
@@ -161,7 +161,7 @@ export default function NewChatPage() {
         )}
 
         {/* Message input */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <Textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -170,7 +170,8 @@ export default function NewChatPage() {
                 ? "Enter instruction for processing (e.g., 'Translate to English')..."
                 : "Type your first message..."
             }
-            className="min-h-[100px]"
+            className="min-h-[100px] max-h-[40vh] overflow-y-auto resize-none"
+            style={{ fieldSizing: "normal" } as unknown as React.CSSProperties}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -178,6 +179,11 @@ export default function NewChatPage() {
               }
             }}
           />
+          {message.length > 0 && (
+            <div className="text-xs text-muted-foreground text-right px-1">
+              {message.length.toLocaleString()} chars · {message.split("\n").length} lines
+            </div>
+          )}
         </div>
 
         <Button
