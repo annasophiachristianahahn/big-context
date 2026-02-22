@@ -133,6 +133,20 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
   );
 }
 
+function formatContext(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    const m = tokens / 1_000_000;
+    return m % 1 === 0 ? `${m}M` : `${m.toFixed(1)}M`;
+  }
+  return `${(tokens / 1000).toFixed(0)}K`;
+}
+
+function formatPrice(price: number): string {
+  if (price >= 100) return `$${price.toFixed(0)}`;
+  if (price >= 10) return `$${price.toFixed(1)}`;
+  return `$${price.toFixed(2)}`;
+}
+
 function ModelItem({
   model,
   selected,
@@ -152,12 +166,12 @@ function ModelItem({
         )}
         <span className="truncate">{model.name}</span>
       </div>
-      <span className="text-[10px] text-muted-foreground shrink-0 ml-2 text-right">
+      <span className="text-[10px] text-muted-foreground shrink-0 ml-2 text-right whitespace-nowrap">
         {model.isFree
           ? "Free"
-          : `$${model.inputPricePerMillion.toFixed(2)} in / $${model.outputPricePerMillion.toFixed(2)} out`}
+          : `${formatPrice(model.inputPricePerMillion)} in · ${formatPrice(model.outputPricePerMillion)} out`}
         {" · "}
-        {(model.contextLength / 1000).toFixed(0)}K ctx
+        {formatContext(model.contextLength)}
       </span>
     </CommandItem>
   );
