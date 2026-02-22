@@ -124,10 +124,27 @@ async function processOneChunk(
     .set({ status: "processing" })
     .where(eq(chunks.id, dbChunk.id));
 
+  // Build a clear, non-ambiguous prompt that won't confuse models into
+  // thinking this is an interactive multi-turn chunking conversation.
+  const isFirst = chunk.index === 0;
+  const isLast = chunk.index === totalChunks - 1;
+  const isOnly = totalChunks === 1;
+
+  let positionNote = "";
+  if (isOnly) {
+    positionNote = "This is the complete text.";
+  } else if (isFirst) {
+    positionNote = `This is the BEGINNING of a longer document (section ${chunk.index + 1} of ${totalChunks}). The text may start mid-context — that is expected.`;
+  } else if (isLast) {
+    positionNote = `This is the END of a longer document (section ${chunk.index + 1} of ${totalChunks}). The text may end abruptly — that is expected.`;
+  } else {
+    positionNote = `This is section ${chunk.index + 1} of ${totalChunks} from a longer document. The text may start and end mid-sentence — that is expected.`;
+  }
+
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `You are a helpful assistant processing a large document in chunks. Your task:\n\n${instruction}\n\nIMPORTANT: You are processing chunk ${chunk.index + 1} of ${totalChunks}. Process ONLY the text provided below according to the instruction. Do not add introductions or conclusions unless this is the first or last chunk respectively. Maintain consistency with the processing of other chunks.`,
+      content: `${instruction}\n\n---\n\n${positionNote}\n\nYou MUST apply the instruction above to the ENTIRE text the user provides and output the complete result. Do not ask for more input. Do not say "provide the next chunk." Do not add commentary, introductions, or meta-discussion. Output ONLY the processed result.`,
     },
     {
       role: "user",
@@ -268,7 +285,7 @@ async function doStitch(
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `You previously processed a large document in ${outputs.length} chunks with this instruction: "${instruction}"\n\nBelow are the outputs from each chunk, separated by "---CHUNK BOUNDARY---". Smooth the transitions between chunks, remove any redundancies at boundaries, and produce a single cohesive output. Do not add new content; only refine the seams between chunks. You MUST reproduce the COMPLETE text — do not summarize or truncate.`,
+      content: `A large document was processed in ${outputs.length} sections using this instruction: "${instruction}"\n\nThe user will provide all ${outputs.length} section outputs joined by "---CHUNK BOUNDARY---" markers. Your job: smooth the transitions between sections, remove any redundancies at boundaries, and produce a single cohesive output. Do NOT add new content. Do NOT summarize or truncate. Reproduce the COMPLETE text with only the seams refined.`,
     },
     {
       role: "user",
