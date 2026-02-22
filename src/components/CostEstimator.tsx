@@ -67,12 +67,9 @@ export function CostEstimator({
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button onClick={() => onConfirm(false)}>Process</Button>
-          {estimate.totalChunks > 1 && (
-            <Button variant="secondary" onClick={() => onConfirm(true)}>
-              Process + Stitch
-            </Button>
-          )}
+          <Button onClick={() => onConfirm(estimate.totalChunks > 1)}>
+            Process
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
