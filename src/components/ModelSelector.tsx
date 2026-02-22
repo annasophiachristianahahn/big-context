@@ -76,9 +76,16 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           </svg>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[350px] p-0" align="start">
+      <PopoverContent className="w-[520px] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search models..." />
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_72px_72px_52px] gap-1 px-3 py-1.5 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            <span>Model</span>
+            <span className="text-right">In/1M</span>
+            <span className="text-right">Out/1M</span>
+            <span className="text-right">Context</span>
+          </div>
           <CommandList>
             <CommandEmpty>No models found.</CommandEmpty>
             {featured && featured.length > 0 && (
@@ -157,7 +164,7 @@ function ModelItem({
   onSelect: () => void;
 }) {
   return (
-    <CommandItem value={model.id + " " + model.name} onSelect={onSelect} className="flex items-center justify-between">
+    <CommandItem value={model.id + " " + model.name} onSelect={onSelect} className="grid grid-cols-[1fr_72px_72px_52px] gap-1 items-center">
       <div className="flex items-center gap-2 min-w-0">
         {selected && (
           <svg className="w-4 h-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -166,11 +173,19 @@ function ModelItem({
         )}
         <span className="truncate">{model.name}</span>
       </div>
-      <span className="text-[10px] text-muted-foreground shrink-0 ml-2 text-right whitespace-nowrap">
-        {model.isFree
-          ? "Free"
-          : `${formatPrice(model.inputPricePerMillion)} in · ${formatPrice(model.outputPricePerMillion)} out`}
-        {" · "}
+      {model.isFree ? (
+        <span className="col-span-2 text-[11px] text-emerald-500 font-medium text-right">Free</span>
+      ) : (
+        <>
+          <span className="text-[11px] text-muted-foreground text-right tabular-nums">
+            {formatPrice(model.inputPricePerMillion)}
+          </span>
+          <span className="text-[11px] text-muted-foreground text-right tabular-nums">
+            {formatPrice(model.outputPricePerMillion)}
+          </span>
+        </>
+      )}
+      <span className="text-[11px] text-muted-foreground text-right tabular-nums">
         {formatContext(model.contextLength)}
       </span>
     </CommandItem>
