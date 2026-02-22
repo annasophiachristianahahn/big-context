@@ -9,6 +9,10 @@ export function estimateTokens(text: string): number {
 
 /**
  * Calculate estimated cost for a big context processing job.
+ *
+ * Chunk sizing respects TWO constraints:
+ * 1. Context window (40% for input, safety margin)
+ * 2. Max output token limit (assumes output ≈ input for translation-like tasks)
  */
 export function estimateCost(
   text: string,
@@ -22,15 +26,29 @@ export function estimateCost(
   // Reserve for system prompt + instruction + chunk metadata + overlap
   const reservedTokens = 500 + instructionTokens + 200;
 
-  // Available tokens per chunk for actual text content
-  const availablePerChunk =
-    Math.floor(model.contextLength * 0.5) - reservedTokens;
-  const safeChunkSize = Math.max(availablePerChunk, 1000);
+  // Constraint 1: Context window — use 40% for chunk text (safety margin)
+  const contextBasedLimit =
+    Math.floor(model.contextLength * 0.4) - reservedTokens;
+
+  // Constraint 2: Max output tokens — output must fit within model's limit
+  // Assume worst case: output ≈ input (translation). 90% safety margin.
+  const outputBasedLimit = model.maxOutput
+    ? Math.floor(model.maxOutput * 0.9)
+    : Infinity;
+
+  const safeChunkSize = Math.max(
+    Math.min(contextBasedLimit, outputBasedLimit),
+    1000
+  );
 
   const totalChunks = Math.ceil(totalTextTokens / safeChunkSize);
 
-  // Estimate output at ~1/3 of input per chunk
-  const estimatedOutputPerChunk = Math.ceil(safeChunkSize / 3);
+  // Estimate output: min of (chunk size, maxOutput) — can't exceed model's limit
+  const rawOutputEstimate = Math.ceil(safeChunkSize / 3);
+  const estimatedOutputPerChunk = model.maxOutput
+    ? Math.min(rawOutputEstimate, model.maxOutput)
+    : rawOutputEstimate;
+
   let estimatedInputTokens = totalChunks * (safeChunkSize + reservedTokens);
   let estimatedOutputTokens = totalChunks * estimatedOutputPerChunk;
 

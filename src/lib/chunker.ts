@@ -96,24 +96,39 @@ function findBestBreakPoint(text: string, maxChars: number): number {
 }
 
 /**
- * Calculate max tokens per chunk given model context and instruction size.
- * Reserves space for system prompt, instruction, metadata, and expected output.
+ * Calculate max tokens per chunk given model context, instruction size,
+ * and the model's max output token limit.
+ *
+ * Two constraints determine chunk size:
+ * 1. Context window: input + output must fit. We use 40% for input (safety margin).
+ * 2. Max output tokens: the model can only generate this many tokens per call.
+ *    For tasks like translation (output ≈ input), chunks must be ≤ maxOutput.
  */
 export function calculateMaxChunkTokens(
   contextLength: number,
-  instructionTokens: number
+  instructionTokens: number,
+  maxOutputTokens?: number
 ): number {
   const systemPromptReserve = 500;
   const chunkMetadataReserve = 100;
   const overlapReserve = OVERLAP_TOKENS;
 
-  // Use 50% of context for input (leave room for output)
-  const availableForInput =
-    contextLength * 0.5 -
+  // Constraint 1: Use 40% of context for chunk text (leaves 60% for output + reserves)
+  const contextBasedLimit =
+    contextLength * 0.4 -
     systemPromptReserve -
     instructionTokens -
     chunkMetadataReserve -
     overlapReserve;
 
-  return Math.max(Math.floor(availableForInput), 2000);
+  // Constraint 2: Output must fit in maxOutput. Assume worst case: output ≈ input (translation).
+  // Apply 90% safety margin on maxOutput to avoid truncation.
+  const outputBasedLimit = maxOutputTokens
+    ? Math.floor(maxOutputTokens * 0.9)
+    : Infinity;
+
+  // Use the more restrictive constraint
+  const limit = Math.min(contextBasedLimit, outputBasedLimit);
+
+  return Math.max(Math.floor(limit), 2000);
 }

@@ -58,11 +58,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(estimate);
     }
 
-    // Split text into chunks
+    // Split text into chunks (respects both context window and max output limits)
     const instructionTokens = estimateTokens(instruction);
     const maxChunkTokens = calculateMaxChunkTokens(
       model.contextLength,
-      instructionTokens
+      instructionTokens,
+      model.maxOutput
     );
     const chunkInputs = splitTextIntoChunks(text, maxChunkTokens);
 
