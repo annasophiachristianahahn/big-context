@@ -18,9 +18,11 @@ import { ThemeToggle } from "./ThemeToggle";
 interface ChatSidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-export function ChatSidebar({ isOpen, onToggle }: ChatSidebarProps) {
+export function ChatSidebar({ isOpen, onToggle, collapsed, onToggleCollapse }: ChatSidebarProps) {
   const { data: chats, isLoading } = useChats();
   const deleteChat = useDeleteChat();
   const renameChat = useRenameChat();
@@ -72,9 +74,21 @@ export function ChatSidebar({ isOpen, onToggle }: ChatSidebarProps) {
         <h1 className="font-semibold text-sm">Big Context</h1>
         <div className="flex items-center gap-1">
           <ThemeToggle />
-          <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0" title="New chat">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </Button>
+          {/* Desktop collapse button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleCollapse}
+            className="h-8 w-8 p-0 hidden md:inline-flex"
+            title="Collapse sidebar"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7" />
             </svg>
           </Button>
         </div>
@@ -181,9 +195,13 @@ export function ChatSidebar({ isOpen, onToggle }: ChatSidebarProps) {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-64 border-r shrink-0">
-        {sidebarContent}
+      {/* Desktop sidebar - animated collapse */}
+      <aside
+        className={`hidden md:flex border-r shrink-0 transition-all duration-200 overflow-hidden ${
+          collapsed ? "w-0 border-r-0" : "w-64"
+        }`}
+      >
+        <div className="w-64 min-w-[16rem]">{sidebarContent}</div>
       </aside>
 
       {/* Mobile drawer */}

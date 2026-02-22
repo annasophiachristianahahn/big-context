@@ -96,8 +96,14 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           variant="outline"
           size="sm"
           disabled={disabled || isLoading}
-          className="justify-between min-w-[200px] max-w-[300px] truncate"
+          className="justify-between min-w-0 sm:min-w-[200px] max-w-[300px] truncate"
         >
+          {isLoading && (
+            <svg className="w-4 h-4 shrink-0 animate-spin mr-1" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
           <span className="truncate">
             {isLoading
               ? "Loading models..."
@@ -123,11 +129,11 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           </svg>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[540px] p-0" align="start">
+      <PopoverContent className="w-[calc(100vw-2rem)] max-w-[540px] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search models..." />
           {/* Sort controls */}
-          <div className="flex items-center gap-1 px-3 py-1.5 border-b">
+          <div className="flex items-center gap-1 px-3 py-1.5 border-b flex-wrap">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1">Sort</span>
             {sortButtons.map((s) => (
               <button
@@ -143,8 +149,8 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
               </button>
             ))}
           </div>
-          {/* Column headers */}
-          <div className="grid grid-cols-[1fr_72px_72px_56px] gap-1 px-3 py-1.5 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          {/* Column headers - hidden on small screens */}
+          <div className="hidden sm:grid grid-cols-[1fr_72px_72px_56px] gap-1 px-3 py-1.5 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
             <span>Model</span>
             <span className="text-right">In/1M</span>
             <span className="text-right">Out/1M</span>
@@ -245,31 +251,52 @@ function ModelItem({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const priceLabel = model.isFree
+    ? "Free"
+    : `${formatPrice(model.inputPricePerMillion)} in / ${formatPrice(model.outputPricePerMillion)} out`;
+
   return (
-    <CommandItem value={model.id + " " + model.name} onSelect={onSelect} className="grid grid-cols-[1fr_72px_72px_56px] gap-1 items-center">
-      <div className="flex items-center gap-2 min-w-0">
-        {selected && (
-          <svg className="w-4 h-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
+    <CommandItem value={model.id + " " + model.name} onSelect={onSelect}>
+      {/* Desktop: grid columns */}
+      <div className="hidden sm:grid grid-cols-[1fr_72px_72px_56px] gap-1 items-center w-full">
+        <div className="flex items-center gap-2 min-w-0">
+          {selected && (
+            <svg className="w-4 h-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          <span className="truncate">{model.name}</span>
+        </div>
+        {model.isFree ? (
+          <span className="col-span-2 text-[11px] text-emerald-500 font-medium text-right">Free</span>
+        ) : (
+          <>
+            <span className="text-[11px] text-muted-foreground text-right tabular-nums">
+              {formatPrice(model.inputPricePerMillion)}
+            </span>
+            <span className="text-[11px] text-muted-foreground text-right tabular-nums">
+              {formatPrice(model.outputPricePerMillion)}
+            </span>
+          </>
         )}
-        <span className="truncate">{model.name}</span>
+        <span className="text-[11px] text-muted-foreground text-right tabular-nums">
+          {formatContext(model.contextLength)}
+        </span>
       </div>
-      {model.isFree ? (
-        <span className="col-span-2 text-[11px] text-emerald-500 font-medium text-right">Free</span>
-      ) : (
-        <>
-          <span className="text-[11px] text-muted-foreground text-right tabular-nums">
-            {formatPrice(model.inputPricePerMillion)}
-          </span>
-          <span className="text-[11px] text-muted-foreground text-right tabular-nums">
-            {formatPrice(model.outputPricePerMillion)}
-          </span>
-        </>
-      )}
-      <span className="text-[11px] text-muted-foreground text-right tabular-nums">
-        {formatContext(model.contextLength)}
-      </span>
+      {/* Mobile: stacked layout */}
+      <div className="flex sm:hidden items-center justify-between w-full gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {selected && (
+            <svg className="w-4 h-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          <span className="truncate">{model.name}</span>
+        </div>
+        <span className={`text-[10px] shrink-0 whitespace-nowrap ${model.isFree ? "text-emerald-500 font-medium" : "text-muted-foreground"}`}>
+          {priceLabel} · {formatContext(model.contextLength)}
+        </span>
+      </div>
     </CommandItem>
   );
 }
