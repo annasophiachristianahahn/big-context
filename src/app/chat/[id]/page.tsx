@@ -59,9 +59,14 @@ export default function ChatPage({
     const pending = sessionStorage.getItem(`pending-message-${id}`);
     if (pending) {
       sessionStorage.removeItem(`pending-message-${id}`);
-      const { message } = JSON.parse(pending);
-      if (message) {
-        sendMessage(message);
+      const data = JSON.parse(pending);
+
+      if (data.bigContext) {
+        // Big Context mode: route to chunk processing with cost estimate
+        handleBigContext(data.text, data.instruction);
+      } else if (data.message) {
+        // Normal mode: send as regular message
+        sendMessage(data.message);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
