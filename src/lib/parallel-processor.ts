@@ -1,5 +1,6 @@
 import type { ChunkInput, ChunkResult, OpenRouterMessage } from "@/types";
 import { chatCompletion } from "./openrouter";
+import { estimateTokens } from "./token-estimator";
 import { db } from "./db";
 import { chunks, chunkJobs } from "./db/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -141,14 +142,18 @@ async function processOneChunk(
     positionNote = `This is section ${chunk.index + 1} of ${totalChunks} from a longer document. The text may start and end mid-sentence — that is expected.`;
   }
 
+  // Put instruction in BOTH system and user messages.
+  // Some models (Gemini via OpenRouter) may ignore system messages and just
+  // echo the user content. Repeating the instruction in the user message
+  // ensures the model actually processes the text.
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `${instruction}\n\n---\n\n${positionNote}\n\nYou MUST apply the instruction above to the ENTIRE text the user provides and output the complete result. Do not ask for more input. Do not say "provide the next chunk." Do not add commentary, introductions, or meta-discussion. Output ONLY the processed result.`,
+      content: `You are a document processor. Follow the user's instruction precisely and output ONLY the processed result. ${positionNote} Do not ask for more input. Do not say "provide the next chunk." Do not add commentary, introductions, or meta-discussion.`,
     },
     {
       role: "user",
-      content: chunk.text,
+      content: `INSTRUCTION:\n${instruction}\n\n${positionNote}\n\nProcess the ENTIRE text below according to the instruction above. Output ONLY the processed result — no commentary, no meta-discussion, no introductions.\n\n---BEGIN TEXT---\n${chunk.text}\n---END TEXT---`,
     },
   ];
 
@@ -252,8 +257,9 @@ export async function stitchResults(
 
   // Check if total output exceeds what the model can produce in one call.
   // If so, skip stitching entirely to avoid truncating the content.
+  // Use script-aware token estimation (critical for non-Latin scripts like Devanagari)
   const totalOutputTokens = chunkOutputs.reduce(
-    (sum, o) => sum + Math.ceil(o.length / 4),
+    (sum, o) => sum + estimateTokens(o),
     0
   );
   const effectiveMaxOutput = maxOutputTokens ?? Math.floor(contextLength * 0.5);

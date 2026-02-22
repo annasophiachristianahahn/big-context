@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { chunkJobs, chunks } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { processChunksInParallel } from "@/lib/parallel-processor";
+import { fetchModels, getModelById } from "@/lib/openrouter";
 import type { ChunkInput } from "@/types";
 
 export async function POST(
@@ -22,6 +23,10 @@ export async function POST(
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
+
+    // Get model info for maxOutputTokens
+    const modelList = await fetchModels();
+    const model = getModelById(modelList, job.model);
 
     // Get failed chunks
     const failedChunks = await db
@@ -57,13 +62,14 @@ export async function POST(
       text: c.inputText,
     }));
 
-    // Reprocess asynchronously
+    // Reprocess asynchronously — pass maxOutputTokens so chunks aren't truncated
     processChunksInParallel(
       id,
       chunkInputs,
       job.instruction,
       job.model,
-      job.totalChunks
+      job.totalChunks,
+      model?.maxOutput
     ).then(async () => {
       // Check if all chunks are now done
       const allChunks = await db
@@ -89,7 +95,7 @@ export async function POST(
         await db
           .update(chunkJobs)
           .set({
-            status: stillFailed > 0 ? "completed" : "completed",
+            status: stillFailed === allChunks.length ? "failed" : "completed",
             stitchedOutput: finalOutput,
             updatedAt: new Date(),
           })

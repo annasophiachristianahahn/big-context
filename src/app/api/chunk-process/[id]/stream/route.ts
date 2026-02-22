@@ -13,9 +13,13 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       const sendEvent = (data: unknown) => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
-        );
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
+          );
+        } catch {
+          // Controller may be closed if client disconnected
+        }
       };
 
       let isComplete = false;
@@ -35,42 +39,58 @@ export async function GET(
             return;
           }
 
+          // Single query for chunk list with aggregates computed in JS
+          // (avoids 3 separate DB queries per poll)
           const chunkList = await db
             .select({
               index: chunks.index,
               status: chunks.status,
               error: chunks.error,
+              tokens: chunks.tokens,
+              cost: chunks.cost,
             })
             .from(chunks)
             .where(eq(chunks.chunkJobId, id))
             .orderBy(asc(chunks.index));
 
-          // Aggregate token/cost data from completed chunks
-          const [aggregates] = await db
-            .select({
-              totalTokens: sql<number>`COALESCE(SUM(${chunks.tokens}), 0)`,
-              totalCost: sql<number>`COALESCE(SUM(${chunks.cost}), 0)`,
-              failedCount: sql<number>`COUNT(CASE WHEN ${chunks.status} = 'failed' THEN 1 END)`,
-            })
-            .from(chunks)
-            .where(eq(chunks.chunkJobId, id));
+          // Compute aggregates from the chunk list
+          let totalTokens = 0;
+          let totalCost = 0;
+          let failedCount = 0;
+          for (const c of chunkList) {
+            totalTokens += c.tokens ?? 0;
+            totalCost += c.cost ?? 0;
+            if (c.status === "failed") failedCount++;
+          }
 
           sendEvent({
             id: job.id,
             status: job.status,
             totalChunks: job.totalChunks,
             completedChunks: job.completedChunks,
-            chunks: chunkList,
-            totalTokens: Number(aggregates?.totalTokens ?? 0),
-            totalCost: Number(aggregates?.totalCost ?? 0),
-            failedChunks: Number(aggregates?.failedCount ?? 0),
+            chunks: chunkList.map((c) => ({
+              index: c.index,
+              status: c.status,
+              error: c.error,
+            })),
+            totalTokens,
+            totalCost,
+            failedChunks: failedCount,
             startedAt: job.createdAt.toISOString(),
             model: job.model,
+            // Send stitchedOutput when terminal state is reached
             stitchedOutput:
-              (job.status === "completed" || job.status === "cancelled") ? job.stitchedOutput : undefined,
+              (job.status === "completed" || job.status === "cancelled")
+                ? job.stitchedOutput
+                : undefined,
           });
 
-          if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+          // Terminal states: close the stream
+          if (
+            job.status === "completed" ||
+            job.status === "failed" ||
+            job.status === "cancelled"
+          ) {
             isComplete = true;
             sendEvent({ done: true });
             controller.close();

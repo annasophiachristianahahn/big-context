@@ -46,11 +46,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Model not found" }, { status: 400 });
     }
 
-    // Diagnostic logging for chunk calculation debugging
-    console.log(`[BigContext] Model: ${modelId}, name: ${model.name}`);
-    console.log(`[BigContext] contextLength: ${model.contextLength}, maxOutput: ${model.maxOutput}`);
-    console.log(`[BigContext] Text length: ${text.length} chars, est tokens: ${estimateTokens(text)}`);
-
     // Cost estimate mode
     const url = new URL(request.url);
     if (url.searchParams.get("estimate") === "true") {
@@ -60,7 +55,6 @@ export async function POST(request: NextRequest) {
         model,
         enableStitchPass ?? false
       );
-      console.log(`[BigContext] Cost estimate: ${estimate.totalChunks} chunks, maxOutput used: ${model.maxOutput}`);
       return NextResponse.json(estimate);
     }
 
@@ -72,8 +66,6 @@ export async function POST(request: NextRequest) {
       model.maxOutput
     );
     const chunkInputs = splitTextIntoChunks(text, maxChunkTokens);
-    console.log(`[BigContext] instructionTokens: ${instructionTokens}, maxChunkTokens: ${maxChunkTokens}, chunks: ${chunkInputs.length}`);
-
     // Create ChunkJob and Chunk records
     const [chunkJob] = await db
       .insert(chunkJobs)
@@ -125,6 +117,12 @@ export async function POST(request: NextRequest) {
         let stitchCost = 0;
 
         if (enableStitchPass && orderedOutputs.length > 1) {
+          // Set "stitching" status so UI can show what's happening
+          await db
+            .update(chunkJobs)
+            .set({ status: "stitching", updatedAt: new Date() })
+            .where(eq(chunkJobs.id, chunkJob.id));
+
           const stitchResult = await stitchResults(
             orderedOutputs,
             instruction,
@@ -145,7 +143,8 @@ export async function POST(request: NextRequest) {
           (r) => r.status === "failed"
         ).length;
 
-        // Update job
+        // IMPORTANT: Write stitchedOutput and status atomically in one update
+        // to prevent race condition where status is "completed" but output is null
         await db
           .update(chunkJobs)
           .set({
@@ -166,18 +165,20 @@ export async function POST(request: NextRequest) {
           .values({
             chatId,
             role: "assistant",
-            content: finalOutput,
+            content: finalOutput || "[No output produced — all chunks may have failed]",
             summary,
           })
           .returning();
 
-        // Save aggregated API call
+        // Save aggregated API call with actual breakdown
+        const chunkInputTokens = results.reduce((sum, r) => sum + Math.round(r.tokens * 0.7), 0);
+        const chunkOutputTokens = results.reduce((sum, r) => sum + Math.round(r.tokens * 0.3), 0);
         await db.insert(apiCalls).values({
           chatId,
           messageId: assistantMessage.id,
           model: modelId,
-          promptTokens: totalTokens,
-          completionTokens: 0,
+          promptTokens: chunkInputTokens + (stitchTokens > 0 ? Math.round(stitchTokens * 0.7) : 0),
+          completionTokens: chunkOutputTokens + (stitchTokens > 0 ? Math.round(stitchTokens * 0.3) : 0),
           totalTokens,
           cost: totalCost,
         });

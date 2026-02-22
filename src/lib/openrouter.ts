@@ -71,7 +71,8 @@ export async function fetchModels(): Promise<ModelInfo[]> {
       id: m.id,
       name: m.name,
       contextLength: m.context_length,
-      maxOutput: m.top_provider?.max_completion_tokens ?? inferMaxOutput(m.context_length),
+      // Use || instead of ?? to also catch 0 (which is falsy but invalid as maxOutput)
+      maxOutput: m.top_provider?.max_completion_tokens || inferMaxOutput(m.context_length),
       inputPricePerMillion: parseFloat(m.pricing.prompt) * 1_000_000,
       outputPricePerMillion: parseFloat(m.pricing.completion) * 1_000_000,
       isFree:

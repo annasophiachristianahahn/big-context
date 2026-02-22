@@ -159,9 +159,26 @@ export default function ChatPage({
         const estimate = await res.json();
         setCostEstimate(estimate);
         setPendingBigContext({ text, instruction });
+      } else {
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        setLocalMessages((prev) => [
+          ...prev,
+          {
+            id: `error-${Date.now()}`,
+            role: "assistant",
+            content: `**Error getting cost estimate:** ${errorData.error || res.statusText}`,
+          },
+        ]);
       }
     } catch (error) {
-      console.error("Cost estimate failed:", error);
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `**Error:** Failed to connect to the server. ${(error as Error).message}`,
+        },
+      ]);
     }
   }
 
@@ -182,13 +199,31 @@ export default function ChatPage({
       });
       if (res.ok) {
         const data = await res.json();
-        console.log("[BigContext] Processing started:", data.debug);
         setActiveChunkJob(data.jobId);
         setPendingBigContext(null);
         refreshChat();
+      } else {
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        setLocalMessages((prev) => [
+          ...prev,
+          {
+            id: `error-${Date.now()}`,
+            role: "assistant",
+            content: `**Error starting chunk processing:** ${errorData.error || res.statusText}`,
+          },
+        ]);
+        setPendingBigContext(null);
       }
     } catch (error) {
-      console.error("Start chunk processing failed:", error);
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `**Error:** Failed to start processing. ${(error as Error).message}`,
+        },
+      ]);
+      setPendingBigContext(null);
     }
   }
 

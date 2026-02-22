@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import type { ChunkJobStatus } from "@/types";
@@ -33,6 +33,19 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
   const reconnectAttemptRef = useRef(0);
   const completedRef = useRef(false);
 
+  // Use refs for callbacks to avoid re-creating EventSource when callbacks change
+  // This is CRITICAL — without it, React Query invalidation triggers refreshChat change,
+  // which changes onComplete/onCancel, which re-creates the useCallback, which re-runs
+  // the connect effect, which closes and reopens EventSource unnecessarily.
+  const onCompleteRef = useRef(onComplete);
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
   // Elapsed time ticker
   useEffect(() => {
     const interval = setInterval(() => {
@@ -43,83 +56,83 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
     return () => clearInterval(interval);
   }, [startTime]);
 
-  const connect = useCallback(() => {
-    // Close existing connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+  // Single stable connect function — no callback deps
+  useEffect(() => {
+    function connect() {
+      // Close existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      const eventSource = new EventSource(
+        `/api/chunk-process/${jobId}/stream`
+      );
+      eventSourceRef.current = eventSource;
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.done) {
+          completedRef.current = true;
+          eventSource.close();
+          return;
+        }
+
+        if (data.error) {
+          eventSource.close();
+          return;
+        }
+
+        // Reset reconnect counter on successful message
+        reconnectAttemptRef.current = 0;
+
+        setStatus(data);
+
+        // Completion: check status, NOT stitchedOutput truthiness
+        // (empty string "" is falsy but is a valid completion — e.g., all chunks failed)
+        if (data.status === "completed" || data.status === "failed") {
+          completedRef.current = true;
+          // Use stitchedOutput if present, otherwise empty string
+          onCompleteRef.current(data.stitchedOutput ?? "");
+        }
+
+        if (data.status === "cancelled") {
+          completedRef.current = true;
+          eventSource.close();
+          onCancelRef.current();
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+
+        // Don't reconnect if completed
+        if (completedRef.current) return;
+
+        // Auto-reconnect with exponential backoff (max 10s)
+        const attempt = reconnectAttemptRef.current;
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+        reconnectAttemptRef.current = attempt + 1;
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (!completedRef.current) {
+            connect();
+          }
+        }, delay);
+      };
     }
 
-    const eventSource = new EventSource(
-      `/api/chunk-process/${jobId}/stream`
-    );
-    eventSourceRef.current = eventSource;
+    connect();
 
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.done) {
-        completedRef.current = true;
-        eventSource.close();
-        return;
-      }
-
-      if (data.error) {
-        eventSource.close();
-        return;
-      }
-
-      // Reset reconnect counter on successful message
-      reconnectAttemptRef.current = 0;
-
-      setStatus(data);
-
-      if (
-        (data.status === "completed" || data.status === "failed") &&
-        data.stitchedOutput
-      ) {
-        completedRef.current = true;
-        setElapsedMs(Date.now() - startTime);
-        onComplete(data.stitchedOutput);
-      }
-
-      if (data.status === "cancelled") {
-        completedRef.current = true;
-        setElapsedMs(Date.now() - startTime);
-        eventSource.close();
-        onCancel();
-      }
-    };
-
-    eventSource.onerror = () => {
-      eventSource.close();
-
-      // Don't reconnect if completed
-      if (completedRef.current) return;
-
-      // Auto-reconnect with exponential backoff (max 10s)
-      const attempt = reconnectAttemptRef.current;
-      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-      reconnectAttemptRef.current = attempt + 1;
-
-      reconnectTimeoutRef.current = setTimeout(() => {
-        if (!completedRef.current) {
-          connect();
-        }
-      }, delay);
-    };
-
-    return eventSource;
-  }, [jobId, onComplete, onCancel, startTime]);
-
-  useEffect(() => {
-    const es = connect();
     return () => {
-      es.close();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [connect]);
+  }, [jobId]); // Only depend on jobId — callbacks via refs
 
   async function handleCancel() {
     setCancelling(true);
@@ -142,7 +155,7 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
       });
       if (res.ok) {
         completedRef.current = false;
-        connect();
+        // Reconnect will happen via the effect when needed
       }
     } finally {
       setRetrying(false);
@@ -201,7 +214,8 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
       : 0;
 
   const failedCount = status.failedChunks ?? status.chunks.filter((c) => c.status === "failed").length;
-  const isActive = status.status === "processing";
+  const isStitching = status.status === "stitching";
+  const isActive = status.status === "processing" || isStitching;
   const isCancelled = status.status === "cancelled";
   const isCompleted = status.status === "completed";
   const isDone = isCompleted || status.status === "failed" || isCancelled;
@@ -217,10 +231,12 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
             ? "Processing Complete"
             : status.status === "failed"
             ? "Processing Failed"
+            : isStitching
+            ? "Stitching Results..."
             : "Processing Chunks"}
         </h3>
         <div className="flex items-center gap-2">
-          {isActive && (
+          {isActive && !isStitching && (
             <Button
               variant="destructive"
               size="sm"
@@ -234,6 +250,17 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
         </div>
       </div>
 
+      {/* Stitching indicator */}
+      {isStitching && (
+        <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          All {status.totalChunks} chunks processed. Stitching outputs into a cohesive result...
+        </div>
+      )}
+
       {/* Progress stats bar */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
@@ -241,14 +268,14 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
         </span>
         <div className="flex items-center gap-3">
           <span>Elapsed: {formatDuration(elapsedMs)}</span>
-          {isActive && estimatedRemaining !== null && (
+          {status.status === "processing" && estimatedRemaining !== null && (
             <span>~{formatDuration(estimatedRemaining)} remaining</span>
           )}
         </div>
       </div>
 
       {/* Progress bar */}
-      <Progress value={percentage} className="h-2" />
+      <Progress value={isStitching ? 100 : percentage} className="h-2" />
 
       {/* Chunk status dots - condensed for large counts */}
       {status.totalChunks <= 100 ? (

@@ -1,5 +1,8 @@
 import type { ChunkInput } from "@/types";
-import { estimateTokens } from "./token-estimator";
+import { estimateTokens, calculateMaxChunkTokens } from "./token-estimator";
+
+// Re-export for consumers that imported from chunker
+export { calculateMaxChunkTokens } from "./token-estimator";
 
 const OVERLAP_TOKENS = 200;
 
@@ -29,11 +32,7 @@ export function splitTextIntoChunks(
   const maxChunkChars = Math.floor(maxChunkTokens * charsPerToken);
   const overlapChars = Math.floor(OVERLAP_TOKENS * charsPerToken);
 
-  console.log(`[Chunker] text.length=${text.length}, totalTokens=${totalTokens}, charsPerToken=${charsPerToken.toFixed(4)}`);
-  console.log(`[Chunker] maxChunkTokens=${maxChunkTokens}, maxChunkChars=${maxChunkChars}, overlapChars=${overlapChars}`);
-
   if (totalTokens <= maxChunkTokens) {
-    console.log(`[Chunker] Text fits in one chunk`);
     return [{ index: 0, text }];
   }
 
@@ -46,9 +45,6 @@ export function splitTextIntoChunks(
     if (end < text.length) {
       const searchRegion = text.slice(offset, end);
       const breakPoint = findBestBreakPoint(searchRegion, maxChunkChars);
-      if (chunks.length < 5) {
-        console.log(`[Chunker] Chunk ${chunks.length}: offset=${offset}, initialEnd=${end}, breakPoint=${breakPoint}, finalEnd=${offset + breakPoint}, chunkSize=${offset + breakPoint - offset}`);
-      }
       end = offset + breakPoint;
     }
 
@@ -65,12 +61,6 @@ export function splitTextIntoChunks(
 
     // Move forward with overlap for context continuity between chunks
     offset = Math.max(end - overlapChars, offset + 1);
-  }
-
-  console.log(`[Chunker] Result: ${chunks.length} chunks`);
-  if (chunks.length > 20) {
-    const avgSize = chunks.reduce((s, c) => s + c.text.length, 0) / chunks.length;
-    console.log(`[Chunker] WARNING: High chunk count! avgChunkSize=${Math.round(avgSize)} chars`);
   }
 
   return chunks;
@@ -116,42 +106,4 @@ function findBestBreakPoint(text: string, maxChars: number): number {
 
   // 6. Hard cut
   return maxChars;
-}
-
-/**
- * Calculate max tokens per chunk given model context, instruction size,
- * and the model's max output token limit.
- *
- * Two constraints determine chunk size:
- * 1. Context window: input + output must fit. We use 40% for input (safety margin).
- * 2. Max output tokens: the model can only generate this many tokens per call.
- *    For tasks like translation (output ≈ input), chunks must be ≤ maxOutput.
- */
-export function calculateMaxChunkTokens(
-  contextLength: number,
-  instructionTokens: number,
-  maxOutputTokens?: number
-): number {
-  const systemPromptReserve = 500;
-  const chunkMetadataReserve = 100;
-  const overlapReserve = OVERLAP_TOKENS;
-
-  // Constraint 1: Use 40% of context for chunk text (leaves 60% for output + reserves)
-  const contextBasedLimit =
-    contextLength * 0.4 -
-    systemPromptReserve -
-    instructionTokens -
-    chunkMetadataReserve -
-    overlapReserve;
-
-  // Constraint 2: Output must fit in maxOutput. Assume worst case: output ≈ input (translation).
-  // Apply 90% safety margin on maxOutput to avoid truncation.
-  const outputBasedLimit = maxOutputTokens
-    ? Math.floor(maxOutputTokens * 0.9)
-    : Infinity;
-
-  // Use the more restrictive constraint
-  const limit = Math.min(contextBasedLimit, outputBasedLimit);
-
-  return Math.max(Math.floor(limit), 2000);
 }
