@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { chunkJobs, chunks } from "@/lib/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, sql } from "drizzle-orm";
 
 export async function GET(
   _request: NextRequest,
@@ -45,12 +45,27 @@ export async function GET(
             .where(eq(chunks.chunkJobId, id))
             .orderBy(asc(chunks.index));
 
+          // Aggregate token/cost data from completed chunks
+          const [aggregates] = await db
+            .select({
+              totalTokens: sql<number>`COALESCE(SUM(${chunks.tokens}), 0)`,
+              totalCost: sql<number>`COALESCE(SUM(${chunks.cost}), 0)`,
+              failedCount: sql<number>`COUNT(CASE WHEN ${chunks.status} = 'failed' THEN 1 END)`,
+            })
+            .from(chunks)
+            .where(eq(chunks.chunkJobId, id));
+
           sendEvent({
             id: job.id,
             status: job.status,
             totalChunks: job.totalChunks,
             completedChunks: job.completedChunks,
             chunks: chunkList,
+            totalTokens: Number(aggregates?.totalTokens ?? 0),
+            totalCost: Number(aggregates?.totalCost ?? 0),
+            failedChunks: Number(aggregates?.failedCount ?? 0),
+            startedAt: job.createdAt.toISOString(),
+            model: job.model,
             stitchedOutput:
               (job.status === "completed" || job.status === "cancelled") ? job.stitchedOutput : undefined,
           });
@@ -63,7 +78,7 @@ export async function GET(
           }
 
           // Wait before next poll
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 1500));
         } catch {
           controller.close();
           return;

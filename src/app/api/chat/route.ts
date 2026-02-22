@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { chats, messages, apiCalls } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
-import { chatCompletionStream, parseSSEStream, fetchModels, getModelById } from "@/lib/openrouter";
+import { chatCompletionStream, parseSSEStream, fetchModels, getModelById, generateChatTitle } from "@/lib/openrouter";
 import { buildMessageContext } from "@/lib/context-manager";
+import { count } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
   try {
@@ -126,6 +127,26 @@ export async function POST(request: NextRequest) {
             cost: usage.cost,
             costBreakdown: usage.cost_details,
           });
+
+          // Auto-title chat if still "New Chat" (after first exchange)
+          if (chat.title === "New Chat") {
+            // Count messages to check if this is the first exchange
+            const [msgCount] = await db
+              .select({ count: count() })
+              .from(messages)
+              .where(eq(messages.chatId, chatId));
+            if ((msgCount?.count ?? 0) <= 3) {
+              // Background title generation - don't await
+              generateChatTitle(chat.model, message)
+                .then(async (title) => {
+                  await db
+                    .update(chats)
+                    .set({ title })
+                    .where(eq(chats.id, chatId));
+                })
+                .catch((err) => console.error("Auto-title failed:", err));
+            }
+          }
 
           controller.enqueue(
             encoder.encode(

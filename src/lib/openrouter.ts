@@ -151,6 +151,41 @@ export async function chatCompletionStream(
   return response;
 }
 
+/**
+ * Generate a short title for a chat based on the first user content.
+ * Uses a lightweight prompt to produce 3-7 words.
+ */
+export async function generateChatTitle(
+  model: string,
+  firstUserContent: string
+): Promise<string> {
+  const truncated = firstUserContent.slice(0, 1500);
+  const titleMessages: OpenRouterMessage[] = [
+    {
+      role: "system",
+      content:
+        "Generate a concise title (3-7 words) for this conversation. Return ONLY the title text. No quotes, no punctuation at the end, no explanation. Examples: 'Bhagavad Gita Translation', 'React Auth Implementation', 'Budget Analysis Q4'",
+    },
+    {
+      role: "user",
+      content: truncated,
+    },
+  ];
+
+  const response = await chatCompletion(model, titleMessages, 30);
+  const title = response.choices[0]?.message?.content?.trim();
+
+  if (title && title.length > 0 && title.length < 100) {
+    // Clean up common LLM artifacts
+    return title
+      .replace(/^["']|["']$/g, "") // Remove wrapping quotes
+      .replace(/\.$/g, "") // Remove trailing period
+      .trim();
+  }
+
+  return firstUserContent.slice(0, 50).split("\n")[0] || "New Chat";
+}
+
 export async function* parseSSEStream(
   response: Response
 ): AsyncGenerator<OpenRouterStreamChunk> {

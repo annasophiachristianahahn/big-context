@@ -24,6 +24,8 @@ export function CostEstimator({
   onConfirm,
   onCancel,
 }: CostEstimatorProps) {
+  const isHighChunkCount = estimate.totalChunks > 20;
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent className="sm:max-w-md">
@@ -39,7 +41,14 @@ export function CostEstimator({
           <div className="font-medium">{estimate.modelName}</div>
 
           <div className="text-muted-foreground">Chunks</div>
-          <div className="font-mono">{estimate.totalChunks}</div>
+          <div className="font-mono">
+            {estimate.totalChunks}
+            {estimate.totalChunks > 1 && (
+              <span className="text-muted-foreground font-sans text-xs ml-1">
+                ({estimate.totalChunks} API calls)
+              </span>
+            )}
+          </div>
 
           <div className="text-muted-foreground">Est. Input Tokens</div>
           <div className="font-mono">
@@ -57,6 +66,20 @@ export function CostEstimator({
           </div>
         </div>
 
+        {/* High chunk count warning */}
+        {isHighChunkCount && (
+          <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 space-y-1">
+            <p className="font-semibold">
+              High chunk count ({estimate.totalChunks} chunks)
+            </p>
+            <p>
+              This model has a limited max output per call, requiring many small chunks.
+              Consider using a model with a larger output limit (e.g., Gemini Flash, Claude Sonnet)
+              to reduce the number of API calls and improve quality.
+            </p>
+          </div>
+        )}
+
         {estimate.estimatedCost > 1 && (
           <p className="text-sm text-destructive">
             This may be expensive. Review carefully before proceeding.
@@ -68,7 +91,7 @@ export function CostEstimator({
             Cancel
           </Button>
           <Button onClick={() => onConfirm(estimate.totalChunks > 1)}>
-            Process
+            Process ({estimate.totalChunks} chunk{estimate.totalChunks > 1 ? "s" : ""})
           </Button>
         </DialogFooter>
       </DialogContent>

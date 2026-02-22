@@ -122,4 +122,9 @@ export interface ChunkJobStatus {
     error?: string | null;
   }>;
   stitchedOutput?: string;
+  totalTokens?: number;
+  totalCost?: number;
+  failedChunks?: number;
+  startedAt?: string;
+  model?: string;
 }

@@ -7,7 +7,7 @@ import {
   calculateMaxChunkTokens,
 } from "@/lib/chunker";
 import { estimateTokens, estimateCost } from "@/lib/token-estimator";
-import { fetchModels, getModelById } from "@/lib/openrouter";
+import { fetchModels, getModelById, generateChatTitle } from "@/lib/openrouter";
 import { processChunksInParallel, stitchResults } from "@/lib/parallel-processor";
 
 export async function POST(request: NextRequest) {
@@ -174,6 +174,19 @@ export async function POST(request: NextRequest) {
           totalTokens,
           cost: totalCost,
         });
+
+        // Auto-title chat if still "New Chat"
+        if (chat.title === "New Chat") {
+          const titleContent = `[${instruction}]\n\n${text.slice(0, 1000)}`;
+          generateChatTitle(modelId, titleContent)
+            .then(async (title) => {
+              await db
+                .update(chats)
+                .set({ title })
+                .where(eq(chats.id, chatId));
+            })
+            .catch((err) => console.error("Auto-title failed:", err));
+        }
       })
       .catch(async (error) => {
         await db
