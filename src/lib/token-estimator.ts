@@ -1,10 +1,24 @@
 import type { ModelInfo, CostEstimate } from "@/types";
 
 /**
- * Rough token estimation: ~4 characters per token for English text.
+ * Token estimation that accounts for different scripts.
+ *
+ * ASCII/Latin text: ~4 characters per token (English, etc.)
+ * Non-ASCII text (Devanagari, CJK, Arabic, etc.): ~1.5 characters per token
+ * because most tokenizers represent non-Latin characters as multiple tokens.
+ *
+ * This is critical for documents in Hindi/Sanskrit/etc. where the naive
+ * 4-chars-per-token estimate would undercount by 2-3x, causing chunks
+ * that are far too large for the model's output limit.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  let nonAsciiCount = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) > 127) nonAsciiCount++;
+  }
+  const asciiCount = text.length - nonAsciiCount;
+  // ASCII: ~4 chars/token, Non-ASCII: ~1.5 chars/token
+  return Math.ceil(asciiCount / 4 + nonAsciiCount / 1.5);
 }
 
 /**

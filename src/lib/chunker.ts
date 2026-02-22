@@ -2,10 +2,13 @@ import type { ChunkInput } from "@/types";
 import { estimateTokens } from "./token-estimator";
 
 const OVERLAP_TOKENS = 200;
-const OVERLAP_CHARS = OVERLAP_TOKENS * 4;
 
 /**
  * Split text into chunks that respect natural boundaries.
+ *
+ * Uses the text's actual chars-per-token ratio to correctly size chunks
+ * for non-Latin scripts (Devanagari, CJK, Arabic, etc.) where the
+ * ratio is ~1.5 chars/token instead of ~4 for English.
  *
  * Split priority:
  * 1. Chapter/section headers (# heading, === divider)
@@ -19,9 +22,14 @@ export function splitTextIntoChunks(
   text: string,
   maxChunkTokens: number
 ): ChunkInput[] {
-  const maxChunkChars = maxChunkTokens * 4;
+  // Compute the text's actual chars-per-token ratio
+  const totalTokens = estimateTokens(text);
+  const charsPerToken = text.length / Math.max(totalTokens, 1);
 
-  if (estimateTokens(text) <= maxChunkTokens) {
+  const maxChunkChars = Math.floor(maxChunkTokens * charsPerToken);
+  const overlapChars = Math.floor(OVERLAP_TOKENS * charsPerToken);
+
+  if (totalTokens <= maxChunkTokens) {
     return [{ index: 0, text }];
   }
 
@@ -46,7 +54,7 @@ export function splitTextIntoChunks(
     }
 
     // Move forward with overlap
-    offset = Math.max(end - OVERLAP_CHARS, offset + 1);
+    offset = Math.max(end - overlapChars, offset + 1);
     if (offset >= text.length) break;
   }
 
