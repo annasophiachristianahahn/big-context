@@ -76,7 +76,7 @@ export function ChatInput({ onSend, onBigContext, disabled }: ChatInputProps) {
   }
 
   return (
-    <div className="border-t bg-background p-4">
+    <div className="border-t bg-background p-4 shrink-0">
       <div className="max-w-3xl mx-auto">
         {/* Uploaded files indicator */}
         {uploadedFiles.length > 0 && (

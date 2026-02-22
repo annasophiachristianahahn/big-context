@@ -34,9 +34,9 @@ export default function ChatLayout({
         onToggleCollapse={toggleCollapsed}
       />
 
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         {/* Mobile header + desktop collapse toggle */}
-        <div className="flex items-center p-2 border-b gap-2 md:hidden">
+        <div className="flex items-center p-2 border-b gap-2 shrink-0 md:hidden">
           <Button
             variant="ghost"
             size="sm"
@@ -62,7 +62,7 @@ export default function ChatLayout({
 
         {/* Desktop: show expand button when sidebar is collapsed */}
         {collapsed && (
-          <div className="hidden md:flex items-center p-2 border-b gap-2">
+          <div className="hidden md:flex items-center p-2 border-b gap-2 shrink-0">
             <Button
               variant="ghost"
               size="sm"
