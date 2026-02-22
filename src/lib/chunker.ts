@@ -29,7 +29,11 @@ export function splitTextIntoChunks(
   const maxChunkChars = Math.floor(maxChunkTokens * charsPerToken);
   const overlapChars = Math.floor(OVERLAP_TOKENS * charsPerToken);
 
+  console.log(`[Chunker] text.length=${text.length}, totalTokens=${totalTokens}, charsPerToken=${charsPerToken.toFixed(4)}`);
+  console.log(`[Chunker] maxChunkTokens=${maxChunkTokens}, maxChunkChars=${maxChunkChars}, overlapChars=${overlapChars}`);
+
   if (totalTokens <= maxChunkTokens) {
+    console.log(`[Chunker] Text fits in one chunk`);
     return [{ index: 0, text }];
   }
 
@@ -42,6 +46,9 @@ export function splitTextIntoChunks(
     if (end < text.length) {
       const searchRegion = text.slice(offset, end);
       const breakPoint = findBestBreakPoint(searchRegion, maxChunkChars);
+      if (chunks.length < 5) {
+        console.log(`[Chunker] Chunk ${chunks.length}: offset=${offset}, initialEnd=${end}, breakPoint=${breakPoint}, finalEnd=${offset + breakPoint}, chunkSize=${offset + breakPoint - offset}`);
+      }
       end = offset + breakPoint;
     }
 
@@ -53,9 +60,17 @@ export function splitTextIntoChunks(
       });
     }
 
-    // Move forward with overlap
+    // If we've reached the end of the text, we're done — no overlap needed
+    if (end >= text.length) break;
+
+    // Move forward with overlap for context continuity between chunks
     offset = Math.max(end - overlapChars, offset + 1);
-    if (offset >= text.length) break;
+  }
+
+  console.log(`[Chunker] Result: ${chunks.length} chunks`);
+  if (chunks.length > 20) {
+    const avgSize = chunks.reduce((s, c) => s + c.text.length, 0) / chunks.length;
+    console.log(`[Chunker] WARNING: High chunk count! avgChunkSize=${Math.round(avgSize)} chars`);
   }
 
   return chunks;
