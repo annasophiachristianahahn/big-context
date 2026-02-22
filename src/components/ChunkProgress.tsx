@@ -214,11 +214,15 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
       : 0;
 
   const failedCount = status.failedChunks ?? status.chunks.filter((c) => c.status === "failed").length;
+  const processingCount = status.chunks.filter((c) => c.status === "processing").length;
   const isStitching = status.status === "stitching";
   const isActive = status.status === "processing" || isStitching;
   const isCancelled = status.status === "cancelled";
   const isCompleted = status.status === "completed";
   const isDone = isCompleted || status.status === "failed" || isCancelled;
+
+  // Show when chunks are processing but none have completed yet (API calls in flight)
+  const isWaitingForApi = isActive && !isStitching && status.completedChunks === 0 && processingCount > 0;
 
   return (
     <div className="mx-4 mb-4 p-4 rounded-xl border bg-muted/50 space-y-3 shrink-0">
@@ -258,6 +262,20 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           All {status.totalChunks} chunks processed. Stitching outputs into a cohesive result...
+        </div>
+      )}
+
+      {/* Waiting for API indicator — shows when chunks are sent but none have returned yet */}
+      {isWaitingForApi && (
+        <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span>
+            {processingCount} chunk{processingCount > 1 ? "s" : ""} sent to {status.model?.split("/").pop() ?? "model"} — waiting for responses...
+            {elapsedMs > 60000 && <span className="text-muted-foreground ml-1">(large documents can take 2-5 min per chunk)</span>}
+          </span>
         </div>
       )}
 

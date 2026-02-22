@@ -161,18 +161,18 @@ async function processOneChunk(
     positionNote = `This is section ${chunk.index + 1} of ${totalChunks} from a longer document. The text may start and end mid-sentence — that is expected.`;
   }
 
-  // Put instruction in BOTH system and user messages.
-  // Some models (Gemini via OpenRouter) may ignore system messages and just
-  // echo the user content. Repeating the instruction in the user message
-  // ensures the model actually processes the text.
+  // "BOOKEND" prompt strategy: instruction appears BEFORE and AFTER the text.
+  // With 100K+ chars of non-English text, models (especially Gemini via OpenRouter)
+  // can "lose" the instruction in the massive context. Repeating it after the text
+  // ensures the model remembers what to do even after processing all the input.
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `You are a document processor. Follow the user's instruction precisely and output ONLY the processed result. ${positionNote} Do not ask for more input. Do not say "provide the next chunk." Do not add commentary, introductions, or meta-discussion.`,
+      content: `You are a document processor. Your ONLY job is to apply the user's instruction to the provided text. ${positionNote}\n\nCRITICAL RULES:\n- Output ONLY the processed/transformed result\n- Do NOT echo or reproduce the input text unchanged\n- Do NOT add commentary, introductions, or meta-discussion\n- Do NOT ask for more input or say "provide the next chunk"\n- If the instruction says to translate, you MUST translate — never output the original language`,
     },
     {
       role: "user",
-      content: `INSTRUCTION:\n${instruction}\n\n${positionNote}\n\nProcess the ENTIRE text below according to the instruction above. Output ONLY the processed result — no commentary, no meta-discussion, no introductions.\n\n---BEGIN TEXT---\n${chunk.text}\n---END TEXT---`,
+      content: `=== YOUR TASK ===\n${instruction}\n=== END TASK ===\n\n${positionNote}\n\nApply the task above to ALL of the text below:\n\n=== DOCUMENT TEXT ===\n${chunk.text}\n=== END DOCUMENT TEXT ===\n\nREMINDER: Apply the task described at the top of this message. Output ONLY the processed result in the target language/format specified. Do NOT output the original text unchanged.`,
     },
   ];
 
