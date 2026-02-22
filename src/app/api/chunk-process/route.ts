@@ -104,7 +104,8 @@ export async function POST(request: NextRequest) {
       chunkInputs,
       instruction,
       modelId,
-      chunkInputs.length
+      chunkInputs.length,
+      model.maxOutput
     )
       .then(async (results) => {
         const orderedOutputs = results
@@ -121,7 +122,8 @@ export async function POST(request: NextRequest) {
             orderedOutputs,
             instruction,
             modelId,
-            model.contextLength
+            model.contextLength,
+            model.maxOutput
           );
           finalOutput = stitchResult.output;
           stitchTokens = stitchResult.tokens;

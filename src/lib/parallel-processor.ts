@@ -29,7 +29,8 @@ export async function processChunksInParallel(
   chunkInputs: ChunkInput[],
   instruction: string,
   model: string,
-  totalChunks: number
+  totalChunks: number,
+  maxOutputTokens?: number
 ): Promise<ChunkResult[]> {
   const results: (ChunkResult | undefined)[] = new Array(chunkInputs.length);
   let activeCount = 0;
@@ -66,7 +67,7 @@ export async function processChunksInParallel(
         nextIndex++;
         activeCount++;
 
-        processOneChunk(chunkJobId, chunk, instruction, model, totalChunks)
+        processOneChunk(chunkJobId, chunk, instruction, model, totalChunks, maxOutputTokens)
           .then((result) => {
             results[currentIdx] = result;
             activeCount--;
@@ -104,7 +105,8 @@ async function processOneChunk(
   chunk: ChunkInput,
   instruction: string,
   model: string,
-  totalChunks: number
+  totalChunks: number,
+  maxOutputTokens?: number
 ): Promise<ChunkResult> {
   // Find the DB chunk record
   const dbChunks = await db
@@ -137,7 +139,7 @@ async function processOneChunk(
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const response = await chatCompletion(model, messages);
+      const response = await chatCompletion(model, messages, maxOutputTokens);
 
       const output = response.choices[0]?.message?.content ?? "";
       const usage = response.usage;
@@ -214,86 +216,59 @@ async function processOneChunk(
 }
 
 /**
- * Recursive stitching: combines chunk outputs, handling arbitrarily large results.
- * Groups outputs into batches that fit within the model's context, stitches each batch,
- * then recursively stitches the intermediate results.
+ * Stitch chunk outputs into a cohesive result.
+ *
+ * IMPORTANT: If the total output exceeds the model's maxOutput token limit,
+ * stitching is SKIPPED to avoid content loss. A stitch pass that can't reproduce
+ * the full output would truncate the translation.
  */
 export async function stitchResults(
   chunkOutputs: string[],
   instruction: string,
   model: string,
-  contextLength: number
+  contextLength: number,
+  maxOutputTokens?: number
 ): Promise<{ output: string; tokens: number; cost: number }> {
   if (chunkOutputs.length <= 1) {
     return { output: chunkOutputs[0] ?? "", tokens: 0, cost: 0 };
   }
 
-  // Estimate how many outputs fit in one stitch call
-  const maxStitchInputTokens = Math.floor(contextLength * 0.5);
-  const batches: string[][] = [];
-  let currentBatch: string[] = [];
-  let currentTokens = 0;
-
-  for (const output of chunkOutputs) {
-    const outputTokens = Math.ceil(output.length / 4);
-    if (
-      currentTokens + outputTokens > maxStitchInputTokens &&
-      currentBatch.length > 0
-    ) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentTokens = 0;
-    }
-    currentBatch.push(output);
-    currentTokens += outputTokens;
-  }
-  if (currentBatch.length > 0) {
-    batches.push(currentBatch);
-  }
-
-  // If everything fits in one batch, do a single stitch
-  if (batches.length === 1) {
-    return doStitch(batches[0], instruction, model);
-  }
-
-  // Otherwise, stitch each batch then recursively stitch the results
-  let totalTokens = 0;
-  let totalCost = 0;
-  const intermediateResults: string[] = [];
-
-  for (const batch of batches) {
-    const result = await doStitch(batch, instruction, model);
-    intermediateResults.push(result.output);
-    totalTokens += result.tokens;
-    totalCost += result.cost;
-  }
-
-  // Recursively stitch intermediate results
-  const finalResult = await stitchResults(
-    intermediateResults,
-    instruction,
-    model,
-    contextLength
+  // Check if total output exceeds what the model can produce in one call.
+  // If so, skip stitching entirely to avoid truncating the content.
+  const totalOutputTokens = chunkOutputs.reduce(
+    (sum, o) => sum + Math.ceil(o.length / 4),
+    0
   );
+  const effectiveMaxOutput = maxOutputTokens ?? Math.floor(contextLength * 0.5);
 
-  return {
-    output: finalResult.output,
-    tokens: totalTokens + finalResult.tokens,
-    cost: totalCost + finalResult.cost,
-  };
+  if (totalOutputTokens > effectiveMaxOutput * 0.9) {
+    // Content too large to stitch without losing data — just concatenate
+    console.log(
+      `Skipping stitch: total output ~${totalOutputTokens} tokens exceeds max output ~${effectiveMaxOutput}. Concatenating instead.`
+    );
+    return {
+      output: chunkOutputs.join("\n\n"),
+      tokens: 0,
+      cost: 0,
+    };
+  }
+
+  // Total output fits — do a single stitch pass
+  return doStitch(chunkOutputs, instruction, model, maxOutputTokens);
 }
 
 async function doStitch(
   outputs: string[],
   instruction: string,
-  model: string
+  model: string,
+  maxOutputTokens?: number
 ): Promise<{ output: string; tokens: number; cost: number }> {
   const combinedText = outputs.join("\n\n---CHUNK BOUNDARY---\n\n");
 
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `You previously processed a large document in ${outputs.length} chunks with this instruction: "${instruction}"\n\nBelow are the outputs from each chunk, separated by "---CHUNK BOUNDARY---". Smooth the transitions between chunks, remove any redundancies at boundaries, and produce a single cohesive output. Do not add new content; only refine the seams between chunks.`,
+      content: `You previously processed a large document in ${outputs.length} chunks with this instruction: "${instruction}"\n\nBelow are the outputs from each chunk, separated by "---CHUNK BOUNDARY---". Smooth the transitions between chunks, remove any redundancies at boundaries, and produce a single cohesive output. Do not add new content; only refine the seams between chunks. You MUST reproduce the COMPLETE text — do not summarize or truncate.`,
     },
     {
       role: "user",
@@ -301,7 +276,7 @@ async function doStitch(
     },
   ];
 
-  const response = await chatCompletion(model, messages);
+  const response = await chatCompletion(model, messages, maxOutputTokens);
 
   return {
     output: response.choices[0]?.message?.content ?? combinedText,

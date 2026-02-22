@@ -37,7 +37,8 @@ export async function fetchModels(): Promise<ModelInfo[]> {
 
   const response = await fetch(`${OPENROUTER_BASE_URL}/models`, {
     headers: { Authorization: `Bearer ${getApiKey()}` },
-  });
+    next: { revalidate: 3600 }, // Next.js server-side cache for 1 hour
+  } as RequestInit);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch models: ${response.status}`);
