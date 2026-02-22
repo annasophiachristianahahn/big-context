@@ -152,12 +152,12 @@ function ModelItem({
         )}
         <span className="truncate">{model.name}</span>
       </div>
-      <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+      <span className="text-[10px] text-muted-foreground shrink-0 ml-2 text-right">
         {model.isFree
           ? "Free"
-          : `$${model.inputPricePerMillion.toFixed(1)}/${model.outputPricePerMillion.toFixed(1)}`}
+          : `$${model.inputPricePerMillion.toFixed(2)} in / $${model.outputPricePerMillion.toFixed(2)} out`}
         {" · "}
-        {(model.contextLength / 1000).toFixed(0)}K
+        {(model.contextLength / 1000).toFixed(0)}K ctx
       </span>
     </CommandItem>
   );
