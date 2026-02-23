@@ -168,11 +168,11 @@ async function processOneChunk(
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `You are a document processor. Your ONLY job is to apply the user's instruction to the provided text. ${positionNote}\n\nCRITICAL RULES:\n- Output ONLY the processed/transformed result\n- Do NOT echo or reproduce the input text unchanged\n- Do NOT add commentary, introductions, or meta-discussion\n- Do NOT ask for more input or say "provide the next chunk"\n- If the instruction says to translate, you MUST translate — never output the original language\n- Use generous visual formatting: insert multiple blank lines between entries, sections, and major items so they are clearly separated and easy to scan. Follow any formatting instructions from the user precisely.`,
+      content: `You are a document processor. Your ONLY job is to apply the user's instruction to the provided text. ${positionNote}\n\nCRITICAL RULES:\n- The user's instruction is your HIGHEST PRIORITY — follow it exactly, including its style, format, voice, and level of detail\n- Do NOT add anything the user didn't ask for (e.g. preambles like "Here is the result")\n- Do NOT ask for more input or say "provide the next chunk"\n- If the instruction says to translate, you MUST translate — never output the original language\n- If the instruction asks you to extract, quote, analyze, or comment on the text, DO THAT — include direct quotes from the source when the user wants them\n- Use generous visual formatting: insert multiple blank lines between entries, sections, and major items so they are clearly separated and easy to scan\n- Follow the user's formatting instructions precisely`,
     },
     {
       role: "user",
-      content: `=== YOUR TASK ===\n${instruction}\n=== END TASK ===\n\n${positionNote}\n\nApply the task above to ALL of the text below:\n\n=== DOCUMENT TEXT ===\n${chunk.text}\n=== END DOCUMENT TEXT ===\n\nREMINDER: Apply the task described at the top of this message. Output ONLY the processed result in the target language/format specified. Do NOT output the original text unchanged.`,
+      content: `=== YOUR TASK ===\n${instruction}\n=== END TASK ===\n\n${positionNote}\n\nApply the task above to ALL of the text below:\n\n=== DOCUMENT TEXT ===\n${chunk.text}\n=== END DOCUMENT TEXT ===\n\nREMINDER: Apply the task described at the top of this message. Follow the user's instructions exactly — match the requested style, format, voice, and level of detail. Include direct quotes from the source text when appropriate.`,
     },
   ];
 
