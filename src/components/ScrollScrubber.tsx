@@ -213,23 +213,32 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
           );
         })}
 
-        {/* Draggable thumb */}
+        {/* Draggable thumb — prominent handle with grip lines */}
         <div
-          className="absolute rounded-full"
+          className="absolute rounded-full flex items-center justify-center"
           style={{
             top: thumbTop - containerBounds.top,
-            right: 0,
-            width: TRACK_WIDTH,
+            right: -2,
+            width: TRACK_WIDTH + 4,
             height: THUMB_HEIGHT,
             backgroundColor: isDragging
               ? "hsl(var(--primary))"
               : isHovering
-              ? "hsl(var(--muted-foreground) / 0.8)"
-              : "hsl(var(--muted-foreground) / 0.5)",
+              ? "hsl(var(--primary) / 0.85)"
+              : "hsl(var(--primary) / 0.65)",
             cursor: isDragging ? "grabbing" : "grab",
             transition: "background-color 150ms",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+            border: "1px solid hsl(var(--primary) / 0.3)",
           }}
-        />
+        >
+          {/* Grip lines */}
+          <div className="flex flex-col gap-[3px] items-center">
+            <div style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
+            <div style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
+            <div style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
+          </div>
+        </div>
       </div>
 
       {/* Tooltip — shows section label on hover/drag */}
