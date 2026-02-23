@@ -46,9 +46,14 @@ export function useScrollScrubber(
         const maxScroll = el.scrollHeight - el.clientHeight;
         if (maxScroll <= 0) {
           setScrollRatio(0);
+          setIsVisible(false);
           return;
         }
         setScrollRatio(el.scrollTop / maxScroll);
+        // Also update visibility on scroll — content may have grown
+        if (!isVisible && el.scrollHeight > el.clientHeight * 1.5) {
+          setIsVisible(true);
+        }
       });
     };
 
@@ -57,11 +62,17 @@ export function useScrollScrubber(
       el.removeEventListener("scroll", onScroll);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [scrollRef]);
+  }, [scrollRef, isVisible]);
 
-  // --- Visibility + bounds via ResizeObserver ---
+  // --- Visibility + bounds via ResizeObserver + MutationObserver ---
+  // We need to detect when content loads asynchronously (e.g. messages from DB).
+  // ResizeObserver on the scroll container won't fire because its own viewport
+  // size doesn't change — only scrollHeight changes. So we also observe the
+  // content element (which physically grows) and use a MutationObserver as
+  // a fallback for DOM changes that don't trigger resize.
   useEffect(() => {
     const el = scrollRef.current;
+    const contentEl = contentRef.current;
     if (!el) return;
 
     const update = () => {
@@ -81,13 +92,32 @@ export function useScrollScrubber(
     };
 
     update();
+
+    // Observe both scroll container and content element for size changes
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    if (contentEl) ro.observe(contentEl);
+
+    // MutationObserver catches DOM changes (new messages added) that cause
+    // scrollHeight to grow even when no resize event fires
+    const mo = new MutationObserver(() => {
+      // Debounce slightly to batch rapid DOM changes
+      requestAnimationFrame(update);
+    });
+    if (contentEl) {
+      mo.observe(contentEl, { childList: true, subtree: true });
+    }
+
+    // Periodic fallback: check every 2s in case observers miss something
+    // (e.g. images loading, lazy content, etc.)
+    const interval = setInterval(update, 2000);
 
     return () => {
       ro.disconnect();
+      mo.disconnect();
+      clearInterval(interval);
     };
-  }, [scrollRef]);
+  }, [scrollRef, contentRef]);
 
   // --- Section marker extraction (debounced, MutationObserver) ---
   const extractMarkers = useCallback(() => {
