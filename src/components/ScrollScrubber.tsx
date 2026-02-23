@@ -216,34 +216,27 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
           );
         })}
 
-        {/* Draggable thumb — big, bright, unmissable */}
+        {/* Draggable thumb — WHITE on dark, BLACK on light. Impossible to miss. */}
         <div
-          className="absolute rounded-lg flex items-center justify-center"
+          className="absolute rounded-lg flex items-center justify-center bg-black dark:bg-white"
           style={{
             top: thumbTop - containerBounds.top,
             right: 0,
             width: THUMB_WIDTH,
             height: THUMB_HEIGHT,
-            backgroundColor: isDragging
-              ? "hsl(var(--primary))"
-              : isHovering
-              ? "hsl(var(--primary) / 0.95)"
-              : "hsl(var(--primary) / 0.8)",
             cursor: isDragging ? "grabbing" : "grab",
-            transition: "background-color 150ms, box-shadow 150ms",
+            transition: "box-shadow 150ms",
             boxShadow: isDragging
-              ? "0 0 12px hsl(var(--primary) / 0.6), 0 2px 8px rgba(0,0,0,0.3)"
-              : isHovering
-              ? "0 0 8px hsl(var(--primary) / 0.4), 0 2px 6px rgba(0,0,0,0.25)"
-              : "0 1px 6px rgba(0,0,0,0.3), 0 0 4px hsl(var(--primary) / 0.25)",
-            border: "2px solid hsl(var(--primary-foreground) / 0.3)",
+              ? "0 0 16px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.4)"
+              : "0 2px 8px rgba(0,0,0,0.4), 0 0 4px rgba(255,255,255,0.2)",
+            border: "2px solid rgba(128,128,128,0.3)",
           }}
         >
-          {/* Grip lines — thick and visible */}
+          {/* Grip lines */}
           <div className="flex flex-col gap-[4px] items-center">
-            <div style={{ width: 12, height: 2, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.8)" }} />
-            <div style={{ width: 12, height: 2, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.8)" }} />
-            <div style={{ width: 12, height: 2, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.8)" }} />
+            <div className="bg-white dark:bg-black" style={{ width: 12, height: 2, borderRadius: 1, opacity: 0.7 }} />
+            <div className="bg-white dark:bg-black" style={{ width: 12, height: 2, borderRadius: 1, opacity: 0.7 }} />
+            <div className="bg-white dark:bg-black" style={{ width: 12, height: 2, borderRadius: 1, opacity: 0.7 }} />
           </div>
         </div>
       </div>
