@@ -167,8 +167,20 @@ function MessageBubble({
   const lineCount = lines.length;
 
   // --- Action handlers ---
+
+  // For user messages, strip Big Context metadata and only copy the user's actual input
+  function getUserCopyText(): string {
+    const content = message.content;
+    if (content.startsWith("[Big Context Processing]")) {
+      const match = content.match(/^.*\nInstruction:\s*(.*)/);
+      return match ? match[1].trim() : content;
+    }
+    return content;
+  }
+
   async function handleCopy() {
-    await navigator.clipboard.writeText(message.content);
+    const text = isUser ? getUserCopyText() : message.content;
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
