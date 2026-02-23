@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { CopyButton } from "./CopyButton";
 import { Button } from "@/components/ui/button";
+import { ScrollScrubber } from "./ScrollScrubber";
 
 interface Message {
   id: string;
@@ -25,13 +26,20 @@ export function ChatMessages({
   isStreaming,
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const userIsNavigatingRef = useRef(false);
 
-  // Auto-scroll to bottom on new messages/streaming
+  // Auto-scroll to bottom on new messages/streaming (paused during scrubber drag)
   useEffect(() => {
+    if (userIsNavigatingRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
+
+  const handleScrubberDragging = useCallback((dragging: boolean) => {
+    userIsNavigatingRef.current = dragging;
+  }, []);
 
   // Detect if user has scrolled up
   const handleScroll = useCallback(() => {
@@ -63,9 +71,9 @@ export function ChatMessages({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto min-h-0 relative"
+      className="flex-1 overflow-y-auto min-h-0 relative hide-native-scrollbar"
     >
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+      <div ref={contentRef} className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
@@ -106,6 +114,13 @@ export function ChatMessages({
           Jump to bottom
         </button>
       )}
+
+      {/* Scroll scrubber for long documents */}
+      <ScrollScrubber
+        scrollRef={scrollRef}
+        contentRef={contentRef}
+        onDraggingChange={handleScrubberDragging}
+      />
     </div>
   );
 }

@@ -124,3 +124,11 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide native scrollbar when custom scrubber is active */
+.hide-native-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-native-scrollbar {
+  scrollbar-width: none;
+}
