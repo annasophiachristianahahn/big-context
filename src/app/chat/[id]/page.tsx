@@ -331,6 +331,7 @@ export default function ChatPage({
         streamingContent={streamingContent}
         isStreaming={isStreaming}
         onSendToNewChat={handleSendToNewChat}
+        chatId={id}
       />
 
       {/* Stop button for streaming */}

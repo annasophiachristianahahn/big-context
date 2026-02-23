@@ -18,6 +18,7 @@ interface ChatMessagesProps {
   streamingContent: string;
   isStreaming: boolean;
   onSendToNewChat?: (content: string) => void;
+  chatId?: string;
 }
 
 export function ChatMessages({
@@ -25,6 +26,7 @@ export function ChatMessages({
   streamingContent,
   isStreaming,
   onSendToNewChat,
+  chatId,
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -80,6 +82,7 @@ export function ChatMessages({
             key={message.id}
             message={message}
             onSendToNewChat={onSendToNewChat}
+            chatId={chatId}
           />
         ))}
         {isStreaming && streamingContent && (
@@ -133,12 +136,30 @@ export function ChatMessages({
 const USER_TRUNCATE_LINES = 20; // Show first 20 lines collapsed
 const USER_TRUNCATE_CHARS = 2000;
 
+/** Parse Big Context metadata from message content */
+function parseBigContextMeta(content: string) {
+  const instruction = content.match(/\nInstruction:\s*([\s\S]*?)\nText length:/);
+  const textLength = content.match(/Text length:\s*([\d,]+)/);
+  const chunks = content.match(/Chunks:\s*(\d+)/);
+  const model = content.match(/Model:\s*(.+)/);
+  const failed = content.startsWith("[Big Context Processing Failed]");
+  return {
+    instruction: instruction?.[1]?.trim() ?? "",
+    textLength: textLength?.[1] ?? "?",
+    chunks: chunks?.[1] ?? "?",
+    model: model?.[1]?.trim() ?? "unknown",
+    failed,
+  };
+}
+
 function MessageBubble({
   message,
   onSendToNewChat,
+  chatId,
 }: {
   message: Message;
   onSendToNewChat?: (content: string) => void;
+  chatId?: string;
 }) {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -149,11 +170,13 @@ function MessageBubble({
 
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [sendingToChat, setSendingToChat] = useState(false);
 
   // Truncate by lines or characters, whichever is shorter
   const lines = message.content.split("\n");
   const shouldTruncate =
     isUser &&
+    !isBigContext &&
     (message.content.length > USER_TRUNCATE_CHARS || lines.length > USER_TRUNCATE_LINES);
 
   let displayContent = message.content;
@@ -206,6 +229,108 @@ function MessageBubble({
     onSendToNewChat?.(message.content);
   }
 
+  /** Fetch original document from API and send to a new chat */
+  async function handleSendDocumentToNewChat() {
+    if (!chatId || !onSendToNewChat) return;
+    setSendingToChat(true);
+    try {
+      const res = await fetch(`/api/chats/${chatId}/document`);
+      if (!res.ok) throw new Error("Failed to fetch document");
+      const data = await res.json();
+      // Store as prefill for new chat — includes original text as a file
+      sessionStorage.setItem(
+        "prefill-new-chat",
+        JSON.stringify({
+          files: [
+            {
+              name: `document-${data.charCount.toLocaleString()}-chars.txt`,
+              content: data.text,
+            },
+          ],
+          instruction: data.instruction,
+        })
+      );
+      // Navigate to new chat
+      window.location.href = "/chat";
+    } catch (err) {
+      console.error("Failed to send document to new chat:", err);
+    } finally {
+      setSendingToChat(false);
+    }
+  }
+
+  // --- Big Context user messages → document card ---
+  if (isUser && isBigContext) {
+    const meta = parseBigContextMeta(message.content);
+    return (
+      <div className="group flex flex-col items-end">
+        <div className="max-w-[85%] rounded-2xl overflow-hidden border border-indigo-500/30 bg-indigo-950/80 dark:bg-indigo-950/60">
+          {/* Card header */}
+          <div className="px-4 py-3 flex items-center gap-2.5 border-b border-indigo-500/20">
+            {/* Document icon */}
+            <div className="shrink-0 w-9 h-9 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+              <svg className="w-5 h-5 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">
+                Big Context Document
+              </p>
+              <p className="text-xs text-indigo-300/80">
+                {meta.textLength} chars · {meta.chunks} chunks · {meta.model}
+              </p>
+            </div>
+            {meta.failed && (
+              <span className="shrink-0 text-xs font-medium text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
+                Failed
+              </span>
+            )}
+          </div>
+
+          {/* Instruction */}
+          <div className="px-4 py-3">
+            <p className="text-xs text-indigo-300/60 uppercase tracking-wider font-medium mb-1.5">Instruction</p>
+            <p className="text-sm text-gray-100 whitespace-pre-wrap break-words leading-relaxed">
+              {meta.instruction || "No instruction provided"}
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="px-4 py-2.5 border-t border-indigo-500/20 flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 text-xs text-indigo-300/70 hover:text-indigo-200 transition-colors"
+            >
+              {copied ? (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+              {copied ? "Copied" : "Copy instruction"}
+            </button>
+            {chatId && onSendToNewChat && (
+              <button
+                onClick={handleSendDocumentToNewChat}
+                disabled={sendingToChat}
+                className="flex items-center gap-1.5 text-xs text-indigo-300/70 hover:text-indigo-200 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                {sendingToChat ? "Loading..." : "Send document to new chat"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`group flex flex-col ${isUser ? "items-end" : "items-start"}`}
@@ -213,9 +338,7 @@ function MessageBubble({
       <div
         className={`relative max-w-[85%] rounded-2xl px-4 py-3 ${
           isUser
-            ? "bg-primary text-primary-foreground"
-            : isBigContext
-            ? "bg-amber-500/10 border border-amber-500/20"
+            ? "bg-indigo-950 text-white dark:bg-indigo-950 dark:text-gray-100"
             : "bg-muted"
         }`}
       >
@@ -225,7 +348,7 @@ function MessageBubble({
             {shouldTruncate && (
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="mt-2 flex items-center gap-1 text-xs font-medium rounded-md px-2 py-1 bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors"
+                className="mt-2 flex items-center gap-1 text-xs font-medium rounded-md px-2 py-1 bg-white/15 hover:bg-white/25 transition-colors"
               >
                 {expanded ? (
                   <>

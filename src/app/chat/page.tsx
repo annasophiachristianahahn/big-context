@@ -32,6 +32,10 @@ export default function NewChatPage() {
         if (data.files && Array.isArray(data.files)) {
           setUploadedFiles(data.files as UploadedFile[]);
         }
+        // Pre-fill instruction if provided (from document card "Send to new chat")
+        if (data.instruction && typeof data.instruction === "string") {
+          setMessage(data.instruction);
+        }
       } catch {
         // Ignore malformed data
       }
