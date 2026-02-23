@@ -13,9 +13,9 @@ interface ScrollScrubberProps {
   onDraggingChange?: (isDragging: boolean) => void;
 }
 
-const TRACK_WIDTH = 8;
-const THUMB_HEIGHT = 40;
-const TICK_WIDTH = 14;
+const TRACK_WIDTH = 14;
+const THUMB_HEIGHT = 48;
+const TICK_WIDTH = 20;
 const TOOLTIP_GAP = 8;
 const TRACK_PADDING_Y = 8;
 
@@ -160,7 +160,7 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
           left: scrubberLeft - TICK_WIDTH,
           width: TRACK_WIDTH + TICK_WIDTH + 4,
           height: containerBounds.height,
-          opacity: isActive ? 1 : 0.35,
+          opacity: isActive ? 1 : 0.6,
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
@@ -175,7 +175,7 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
       >
         {/* Track background line */}
         <div
-          className="absolute rounded-full bg-muted-foreground/20 dark:bg-muted-foreground/15"
+          className="absolute rounded-full bg-muted-foreground/30 dark:bg-muted-foreground/25"
           style={{
             top: TRACK_PADDING_Y,
             right: 0,
@@ -198,10 +198,10 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
                 top: tickTop - 1,
                 right: TRACK_WIDTH - 1,
                 width: TICK_WIDTH,
-                height: 2,
+                height: 3,
                 backgroundColor: isActive
-                  ? "hsl(var(--primary) / 0.5)"
-                  : "hsl(var(--primary) / 0.2)",
+                  ? "hsl(var(--primary) / 0.7)"
+                  : "hsl(var(--primary) / 0.4)",
                 borderRadius: 1,
                 transition: "background-color 150ms",
               }}
@@ -224,8 +224,8 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
             backgroundColor: isDragging
               ? "hsl(var(--primary))"
               : isHovering
-              ? "hsl(var(--muted-foreground) / 0.6)"
-              : "hsl(var(--muted-foreground) / 0.35)",
+              ? "hsl(var(--muted-foreground) / 0.8)"
+              : "hsl(var(--muted-foreground) / 0.5)",
             cursor: isDragging ? "grabbing" : "grab",
             transition: "background-color 150ms",
           }}
