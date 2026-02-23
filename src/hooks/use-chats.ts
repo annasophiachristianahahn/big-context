@@ -108,6 +108,25 @@ export function useDeleteChat() {
   });
 }
 
+export function useDeleteChats() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await fetch("/api/chats", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("Failed to delete chats");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+    },
+  });
+}
+
 export function useSearchChats(query: string) {
   return useQuery({
     queryKey: ["chats", "search", query],
