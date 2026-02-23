@@ -168,7 +168,7 @@ async function processOneChunk(
   const messages: OpenRouterMessage[] = [
     {
       role: "system",
-      content: `You are a document processor. Your ONLY job is to apply the user's instruction to the provided text. ${positionNote}\n\nCRITICAL RULES:\n- Output ONLY the processed/transformed result\n- Do NOT echo or reproduce the input text unchanged\n- Do NOT add commentary, introductions, or meta-discussion\n- Do NOT ask for more input or say "provide the next chunk"\n- If the instruction says to translate, you MUST translate — never output the original language`,
+      content: `You are a document processor. Your ONLY job is to apply the user's instruction to the provided text. ${positionNote}\n\nCRITICAL RULES:\n- Output ONLY the processed/transformed result\n- Do NOT echo or reproduce the input text unchanged\n- Do NOT add commentary, introductions, or meta-discussion\n- Do NOT ask for more input or say "provide the next chunk"\n- If the instruction says to translate, you MUST translate — never output the original language\n- Use generous visual formatting: insert multiple blank lines between entries, sections, and major items so they are clearly separated and easy to scan. Follow any formatting instructions from the user precisely.`,
     },
     {
       role: "user",

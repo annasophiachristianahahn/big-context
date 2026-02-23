@@ -172,8 +172,13 @@ function MessageBubble({
   function getUserCopyText(): string {
     const content = message.content;
     if (content.startsWith("[Big Context Processing]")) {
-      const match = content.match(/^.*\nInstruction:\s*(.*)/);
-      return match ? match[1].trim() : content;
+      // Capture everything between "Instruction: " and the metadata lines at the end
+      // Use [\s\S]*? to match across newlines (user instructions can be multi-line)
+      const match = content.match(/\nInstruction:\s*([\s\S]*?)\nText length:/);
+      if (match) return match[1].trim();
+      // Fallback: grab everything after "Instruction: "
+      const fallback = content.match(/\nInstruction:\s*([\s\S]*)/);
+      return fallback ? fallback[1].trim() : content;
     }
     return content;
   }
@@ -241,7 +246,7 @@ function MessageBubble({
             )}
           </div>
         ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden [&_pre]:bg-background/50 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-xs">
+          <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden [&_pre]:bg-background/50 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:text-xs [&_ol>li+li]:mt-6 [&_ul>li+li]:mt-6 [&_p+p]:mt-4 [&_h1]:mt-8 [&_h2]:mt-7 [&_h3]:mt-6 [&_h4]:mt-5">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
