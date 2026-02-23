@@ -13,10 +13,11 @@ interface ScrollScrubberProps {
   onDraggingChange?: (isDragging: boolean) => void;
 }
 
-const TRACK_WIDTH = 14;
-const THUMB_HEIGHT = 48;
-const TICK_WIDTH = 20;
-const TOOLTIP_GAP = 8;
+const TRACK_WIDTH = 18;
+const THUMB_WIDTH = 28;
+const THUMB_HEIGHT = 56;
+const TICK_WIDTH = 24;
+const TOOLTIP_GAP = 12;
 const TRACK_PADDING_Y = 8;
 
 export const ScrollScrubber = React.memo(function ScrollScrubber({
@@ -143,7 +144,7 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
     containerBounds.height - TRACK_PADDING_Y * 2 - THUMB_HEIGHT;
   const thumbTop =
     containerBounds.top + TRACK_PADDING_Y + scrollRatio * usableHeight;
-  const scrubberRight = 6; // px from right edge of viewport area
+  const scrubberRight = 4; // px from right edge of viewport area
   const scrubberLeft =
     containerBounds.right - TRACK_WIDTH - scrubberRight;
 
@@ -157,10 +158,10 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
         className="fixed z-50 select-none transition-opacity duration-200"
         style={{
           top: containerBounds.top,
-          left: scrubberLeft - TICK_WIDTH,
-          width: TRACK_WIDTH + TICK_WIDTH + 4,
+          left: scrubberLeft - TICK_WIDTH - 4,
+          width: TRACK_WIDTH + TICK_WIDTH + THUMB_WIDTH,
           height: containerBounds.height,
-          opacity: isActive ? 1 : 0.6,
+          opacity: isActive ? 1 : 0.85,
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
@@ -175,12 +176,14 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
       >
         {/* Track background line */}
         <div
-          className="absolute rounded-full bg-muted-foreground/30 dark:bg-muted-foreground/25"
+          className="absolute rounded-full"
           style={{
             top: TRACK_PADDING_Y,
-            right: 0,
+            right: (THUMB_WIDTH - TRACK_WIDTH) / 2,
             width: TRACK_WIDTH,
             height: containerBounds.height - TRACK_PADDING_Y * 2,
+            backgroundColor: "hsl(var(--muted-foreground) / 0.2)",
+            border: "1px solid hsl(var(--muted-foreground) / 0.15)",
           }}
         />
 
@@ -195,14 +198,14 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
               key={i}
               className="absolute"
               style={{
-                top: tickTop - 1,
-                right: TRACK_WIDTH - 1,
+                top: tickTop - 1.5,
+                right: (THUMB_WIDTH - TRACK_WIDTH) / 2 + TRACK_WIDTH - 2,
                 width: TICK_WIDTH,
                 height: 3,
                 backgroundColor: isActive
-                  ? "hsl(var(--primary) / 0.7)"
-                  : "hsl(var(--primary) / 0.4)",
-                borderRadius: 1,
+                  ? "hsl(var(--primary) / 0.8)"
+                  : "hsl(var(--primary) / 0.5)",
+                borderRadius: 1.5,
                 transition: "background-color 150ms",
               }}
               onMouseEnter={(e) => handleTickHover(marker, e.clientY)}
@@ -213,30 +216,34 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
           );
         })}
 
-        {/* Draggable thumb — prominent handle with grip lines */}
+        {/* Draggable thumb — big, bright, unmissable */}
         <div
-          className="absolute rounded-full flex items-center justify-center"
+          className="absolute rounded-lg flex items-center justify-center"
           style={{
             top: thumbTop - containerBounds.top,
-            right: -2,
-            width: TRACK_WIDTH + 4,
+            right: 0,
+            width: THUMB_WIDTH,
             height: THUMB_HEIGHT,
             backgroundColor: isDragging
               ? "hsl(var(--primary))"
               : isHovering
-              ? "hsl(var(--primary) / 0.85)"
-              : "hsl(var(--primary) / 0.65)",
+              ? "hsl(var(--primary) / 0.95)"
+              : "hsl(var(--primary) / 0.8)",
             cursor: isDragging ? "grabbing" : "grab",
-            transition: "background-color 150ms",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
-            border: "1px solid hsl(var(--primary) / 0.3)",
+            transition: "background-color 150ms, box-shadow 150ms",
+            boxShadow: isDragging
+              ? "0 0 12px hsl(var(--primary) / 0.6), 0 2px 8px rgba(0,0,0,0.3)"
+              : isHovering
+              ? "0 0 8px hsl(var(--primary) / 0.4), 0 2px 6px rgba(0,0,0,0.25)"
+              : "0 1px 6px rgba(0,0,0,0.3), 0 0 4px hsl(var(--primary) / 0.25)",
+            border: "2px solid hsl(var(--primary-foreground) / 0.3)",
           }}
         >
-          {/* Grip lines */}
-          <div className="flex flex-col gap-[3px] items-center">
-            <div style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
-            <div style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
-            <div style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
+          {/* Grip lines — thick and visible */}
+          <div className="flex flex-col gap-[4px] items-center">
+            <div style={{ width: 12, height: 2, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.8)" }} />
+            <div style={{ width: 12, height: 2, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.8)" }} />
+            <div style={{ width: 12, height: 2, borderRadius: 1, backgroundColor: "hsl(var(--primary-foreground) / 0.8)" }} />
           </div>
         </div>
       </div>
@@ -244,15 +251,15 @@ export const ScrollScrubber = React.memo(function ScrollScrubber({
       {/* Tooltip — shows section label on hover/drag */}
       {tooltipMarker && isActive && (
         <div
-          className="fixed z-[60] pointer-events-none px-2.5 py-1 rounded-md text-xs font-medium bg-popover text-popover-foreground shadow-md border border-border/50 truncate"
+          className="fixed z-[60] pointer-events-none px-3 py-1.5 rounded-md text-xs font-medium bg-popover text-popover-foreground shadow-lg border border-border truncate"
           style={{
-            top: tooltipY - 14,
+            top: tooltipY - 16,
             right:
               window.innerWidth -
               scrubberLeft +
               TICK_WIDTH +
               TOOLTIP_GAP,
-            maxWidth: 220,
+            maxWidth: 240,
             whiteSpace: "nowrap",
           }}
         >
