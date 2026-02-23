@@ -26,6 +26,9 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
   const [status, setStatus] = useState<ChunkJobStatus | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [startTime] = useState(() => Date.now());
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -88,6 +91,15 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
 
         setStatus(data);
 
+        // --- Staleness detection ---
+        // If the SSE reports the job is stale (no progress for 3+ min),
+        // auto-resume it once. This handles server redeployments.
+        if (data.isStale) {
+          setIsStale(true);
+        } else {
+          setIsStale(false);
+        }
+
         // Completion: check status, NOT stitchedOutput truthiness
         // (empty string "" is falsy but is a valid completion — e.g., all chunks failed)
         if (data.status === "completed" || data.status === "failed") {
@@ -133,6 +145,36 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
       }
     };
   }, [jobId]); // Only depend on jobId — callbacks via refs
+
+  // Auto-resume stale jobs once
+  useEffect(() => {
+    if (isStale && !autoResumeAttempted && !resuming) {
+      setAutoResumeAttempted(true);
+      console.log(`[BigContext] Job ${jobId} is stale — auto-resuming...`);
+      handleResume();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStale, autoResumeAttempted]);
+
+  async function handleResume() {
+    setResuming(true);
+    try {
+      const res = await fetch(`/api/chunk-process/${jobId}/resume`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setIsStale(false);
+        // The SSE stream will pick up the resumed processing automatically
+        console.log(`[BigContext] Job ${jobId} resumed successfully`);
+      } else {
+        console.error(`[BigContext] Resume failed:`, await res.text());
+      }
+    } catch (error) {
+      console.error("Resume failed:", error);
+    } finally {
+      setResuming(false);
+    }
+  }
 
   async function handleCancel() {
     setCancelling(true);
@@ -262,6 +304,32 @@ export function ChunkProgress({ jobId, onComplete, onCancel }: ChunkProgressProp
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           All {status.totalChunks} chunks processed. Stitching outputs into a cohesive result...
+        </div>
+      )}
+
+      {/* Stale/orphaned job indicator */}
+      {isStale && (
+        <div className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <span>
+            {resuming
+              ? "Resuming processing..."
+              : autoResumeAttempted
+              ? "Job appears stuck — auto-resume attempted. If still stuck:"
+              : "Job appears stuck (server may have restarted)"}
+          </span>
+          {!resuming && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResume}
+              className="h-6 text-xs ml-2"
+            >
+              Resume
+            </Button>
+          )}
         </div>
       )}
 

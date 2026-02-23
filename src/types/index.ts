@@ -129,5 +129,8 @@ export interface ChunkJobStatus {
   totalCost?: number;
   failedChunks?: number;
   startedAt?: string;
+  updatedAt?: string;
   model?: string;
+  isStale?: boolean;
+  staleDurationMs?: number;
 }

@@ -74,6 +74,22 @@ export default function ChatPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isLoading]);
 
+  // Auto-detect active chunk jobs on page load (survives browser reload)
+  useEffect(() => {
+    if (!id || isLoading || activeChunkJob) return;
+
+    fetch(`/api/chats/${id}/active-job`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.activeJobId) {
+          console.log(`[BigContext] Resuming active job: ${data.activeJobId} (status: ${data.status})`);
+          setActiveChunkJob(data.activeJobId);
+        }
+      })
+      .catch((err) => console.error("Failed to check for active jobs:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isLoading]);
+
   async function sendMessage(content: string) {
     // Optimistic update
     const tempId = `temp-${Date.now()}`;

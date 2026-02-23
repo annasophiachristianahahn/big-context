@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { chunkJobs, chunks } from "@/lib/db/schema";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
+
+// A job is considered stale if its updatedAt hasn't changed in this many ms
+// and it still has chunks in "processing" or "pending" state.
+const STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 
 export async function GET(
   _request: NextRequest,
@@ -11,6 +15,8 @@ export async function GET(
   const encoder = new TextEncoder();
   console.log(`[BigContext:SSE] Stream opened for job ${id}`);
   let pollCount = 0;
+  let lastSeenCompleted = -1;
+  let lastProgressTime = Date.now();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -42,7 +48,6 @@ export async function GET(
           }
 
           // Single query for chunk list with aggregates computed in JS
-          // (avoids 3 separate DB queries per poll)
           const chunkList = await db
             .select({
               index: chunks.index,
@@ -76,6 +81,21 @@ export async function GET(
             console.log(`[BigContext:SSE] Poll #${pollCount} job=${id}: status=${job.status}, completed=${job.completedChunks}/${job.totalChunks}, chunks=${JSON.stringify(chunkStatuses)}, tokens=${totalTokens}`);
           }
 
+          // --- Staleness detection ---
+          // Track whether progress is being made. If completedChunks hasn't
+          // changed for STALE_THRESHOLD_MS, the job is likely orphaned from
+          // a server restart / redeploy.
+          if (job.completedChunks !== lastSeenCompleted) {
+            lastSeenCompleted = job.completedChunks;
+            lastProgressTime = Date.now();
+          }
+
+          const timeSinceProgress = Date.now() - lastProgressTime;
+          const isStale =
+            job.status === "processing" &&
+            timeSinceProgress > STALE_THRESHOLD_MS &&
+            job.completedChunks < job.totalChunks;
+
           sendEvent({
             id: job.id,
             status: job.status,
@@ -90,7 +110,11 @@ export async function GET(
             totalCost,
             failedChunks: failedCount,
             startedAt: job.createdAt.toISOString(),
+            updatedAt: job.updatedAt.toISOString(),
             model: job.model,
+            // Staleness indicator for the frontend
+            isStale,
+            staleDurationMs: isStale ? timeSinceProgress : 0,
             // Send stitchedOutput when terminal state is reached
             stitchedOutput:
               (job.status === "completed" || job.status === "cancelled")
