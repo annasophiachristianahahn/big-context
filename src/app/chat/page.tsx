@@ -12,7 +12,7 @@ import { FileUpload, type UploadedFile } from "@/components/FileUpload";
 const BIG_CONTEXT_THRESHOLD = 10000; // chars — matches ChatInput threshold
 
 export default function NewChatPage() {
-  const [model, setModel] = useState("anthropic/claude-sonnet-4.6");
+  const [model, setModel] = useState("google/gemini-2.5-flash");
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -21,6 +21,22 @@ export default function NewChatPage() {
   const createChat = useCreateChat();
 
   const totalChars = uploadedFiles.reduce((sum, f) => sum + f.content.length, 0);
+
+  // Check for pre-filled files from "Send to new chat" action
+  useEffect(() => {
+    const prefill = sessionStorage.getItem("prefill-new-chat");
+    if (prefill) {
+      sessionStorage.removeItem("prefill-new-chat");
+      try {
+        const data = JSON.parse(prefill);
+        if (data.files && Array.isArray(data.files)) {
+          setUploadedFiles(data.files as UploadedFile[]);
+        }
+      } catch {
+        // Ignore malformed data
+      }
+    }
+  }, []);
 
   // Auto-enable Big Context when files exceed threshold
   useEffect(() => {

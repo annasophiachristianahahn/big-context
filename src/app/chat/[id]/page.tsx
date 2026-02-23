@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, use } from "react";
+import { useRouter } from "next/navigation";
 import { useChatDetail, useRefreshChat } from "@/hooks/use-chat-messages";
 import { useUpdateChat } from "@/hooks/use-chats";
 import { ChatMessages } from "@/components/ChatMessages";
@@ -19,6 +20,7 @@ export default function ChatPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const { data: chat, isLoading } = useChatDetail(id);
   const refreshChat = useRefreshChat(id);
   const updateChat = useUpdateChat();
@@ -241,6 +243,25 @@ export default function ChatPage({
     refreshChat();
   }, [refreshChat]);
 
+  const handleSendToNewChat = useCallback(
+    (content: string) => {
+      // Store content as pre-filled file for the new chat page
+      sessionStorage.setItem(
+        "prefill-new-chat",
+        JSON.stringify({
+          files: [
+            {
+              name: `response-${new Date().toISOString().slice(0, 10)}.txt`,
+              content,
+            },
+          ],
+        })
+      );
+      router.push("/chat");
+    },
+    [router]
+  );
+
   function handleModelChange(modelId: string) {
     updateChat.mutate({ id, model: modelId });
   }
@@ -293,6 +314,7 @@ export default function ChatPage({
         messages={localMessages}
         streamingContent={streamingContent}
         isStreaming={isStreaming}
+        onSendToNewChat={handleSendToNewChat}
       />
 
       {/* Stop button for streaming */}

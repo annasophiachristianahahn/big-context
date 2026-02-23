@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       .values({
         userId: DEFAULT_USER_ID,
         title: body.title ?? "New Chat",
-        model: body.model ?? "anthropic/claude-sonnet-4.6",
+        model: body.model ?? "google/gemini-2.5-flash",
         systemPrompt: body.systemPrompt ?? null,
       })
       .returning();

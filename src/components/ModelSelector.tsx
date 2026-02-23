@@ -28,6 +28,7 @@ interface ModelSelectorProps {
 }
 
 const FEATURED_IDS = [
+  "google/gemini-2.5-flash",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-opus-4.6",
 ];
